@@ -1,5 +1,48 @@
 # AI Game Engine 更新日志
 
+## v9.3 — AI自主发现问题系统
+
+日期: 2026-07-26
+
+新增:
+- AI试玩Agent（agent.js）：视觉感知 + 探索模式 + 目标导向
+  - 视觉感知：读取游戏画面/UI/地图，类似人眼看画面
+  - 探索模式：8种探索策略（边缘测试、连续跳跃、方向切换、技能组合、极端操作等）
+  - 聚焦模式：针对特定场景测试（Boss背后攻击、穿墙、掉落）
+  - 压力模式：高强度操作测试系统稳定性
+  - 操作日志：记录所有操作，支持Bug复现
+- 行为观察器 + 数据监控器（observer.js）
+  - 时间序列数据：playerY/X/HP、enemyCount、bossHP、gameState
+  - 行为统计：技能使用、跳跃、移动、空闲、攻击、受伤
+  - Boss行为监控：技能时间戳、Phase变化、HP变化、冷却异常
+  - 碰撞事件记录
+- 异常检测系统（anomaly.js）
+  - 物理异常：掉出地图、穿过地面、坐标NaN、浮出屏幕
+  - 状态异常：HP=0但游戏运行、gameOver与GameState不匹配
+  - 逻辑异常：Boss技能CD异常、spawn率异常、关卡跳跃、技能冷却负值
+  - 未知事件探索：玩家无敌检测、Boss无法攻击检测
+- Bug分析Agent（debugger.js）
+  - 结构化Bug报告：type/severity/title/steps/reason/file/suggestion
+  - 深度分析：即使无异常也检查潜在问题（技能频率、空闲、结束条件）
+- 自动修复Agent（fixer.js）
+  - DSL参数修复：HP、spawn_rate、cooldown等参数自动调整
+  - 运行时注入修复：边界检查、状态同步
+  - DSL快照管理：修复回滚机制
+- 强化学习系统（trainer.js）
+  - 奖励机制：发现bug +100、新类型bug +200、死亡 -10
+  - 策略学习：记录哪些操作组合导致bug发现，动态调整权重
+  - 行动选择：基于策略权重选择最优探索操作
+
+修改:
+- 无
+
+修复:
+- 无
+
+作者: benwei
+
+---
+
 ## v9.2 — AI Game Director
 
 日期: 2026-07-26
