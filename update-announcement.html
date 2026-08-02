@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>v10.0 更新公告 — AI 游戏引擎</title>
+<style>
+:root{
+  --bg:#fafafa;--surface:#fff;--surface-muted:#f5f5f7;
+  --text:#1a1a1a;--text-muted:#666;--text-light:#999;
+  --border:#e5e5e5;--border-light:#f0f0f0;
+  --accent:#4b3fe3;--accent-light:#e8eaff;
+  --green:#1dc981;--orange:#ff8800;--red:#e8463a;
+  --radius:14px;--radius-sm:10px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.7;
+  padding:40px 20px;
+}
+.container{max-width:720px;margin:0 auto}
+
+/* 头部 */
+.header{
+  text-align:center;margin-bottom:40px;padding:48px 24px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);
+}
+.header .version-badge{
+  display:inline-block;padding:4px 14px;
+  background:var(--accent-light);color:var(--accent);
+  border-radius:999px;font-size:13px;font-weight:600;
+  margin-bottom:16px;
+}
+.header h1{
+  font-size:28px;font-weight:700;
+  margin-bottom:8px;
+}
+.header .date{font-size:14px;color:var(--text-light)}
+.header .subtitle{
+  font-size:16px;color:var(--text-muted);
+  margin-top:12px;
+}
+
+/* 分区标题 */
+.section{margin-bottom:32px}
+.section-title{
+  display:flex;align-items:center;gap:8px;
+  font-size:18px;font-weight:600;
+  margin-bottom:16px;padding-bottom:8px;
+  border-bottom:2px solid var(--border-light);
+}
+.section-title .icon{
+  width:28px;height:28px;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:var(--radius-sm);font-size:16px;
+}
+.section-title.new .icon{background:var(--accent-light)}
+.section-title.modified .icon{background:#fff4e6}
+.section-title.fixed .icon{background:#e6fff5}
+
+/* 条目卡片 */
+.item{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:16px 20px;
+  margin-bottom:12px;transition:box-shadow .15s;
+}
+.item:hover{box-shadow:0 2px 12px rgba(0,0,0,.04)}
+.item-title{
+  font-size:15px;font-weight:600;
+  margin-bottom:6px;display:flex;align-items:center;gap:6px;
+}
+.item-title .tag{
+  font-size:11px;padding:2px 8px;border-radius:4px;
+  font-weight:500;
+}
+.item-desc{font-size:14px;color:var(--text-muted)}
+.item-list{
+  list-style:none;padding-left:0;margin-top:8px;
+}
+.item-list li{
+  font-size:13px;color:var(--text-muted);
+  padding:4px 0 4px 20px;position:relative;
+}
+.item-list li::before{
+  content:'';position:absolute;left:6px;top:14px;
+  width:4px;height:4px;border-radius:50%;
+  background:var(--border);
+}
+.item-list li code{
+  background:var(--surface-muted);padding:1px 6px;
+  border-radius:4px;font-size:12px;color:var(--accent);
+}
+
+/* 底部 */
+.footer{
+  text-align:center;padding:32px 0;
+  color:var(--text-light);font-size:13px;
+}
+.footer a{color:var(--accent);text-decoration:none}
+
+/* 响应式 */
+@media(max-width:600px){
+  body{padding:20px 12px}
+  .header{padding:32px 16px}
+  .header h1{font-size:22px}
+  .item{padding:12px 16px}
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ═══ 头部 ═══ -->
+  <div class="header">
+    <span class="version-badge">v10.0</span>
+    <h1>AI 游戏引擎更新公告</h1>
+    <div class="date">2026 年 8 月 2 日</div>
+    <div class="subtitle">全新聊天式 UI · 本地记忆系统 · 独立游戏页面</div>
+  </div>
+
+  <!-- ═══ 新增功能 ═══ -->
+  <div class="section">
+    <div class="section-title new">
+      <span class="icon">✨</span>
+      新增功能
+    </div>
+
+    <div class="item">
+      <div class="item-title">💬 聊天式交互界面</div>
+      <div class="item-desc">采用 AI 网页统一风格，从单页游戏容器升级为完整聊天体验</div>
+      <ul class="item-list">
+        <li>侧边栏：品牌标识、新对话按钮、历史对话列表、一键清空</li>
+        <li>聊天区：欢迎页含 6 个建议芯片，消息气泡区分用户/AI 头像</li>
+        <li>底部输入栏：5 种游戏预设快捷按钮 + 导演/测试模式 + 发送按钮</li>
+        <li>响应式布局，移动端侧边栏自动隐藏</li>
+      </ul>
+    </div>
+
+    <div class="item">
+      <div class="item-title">🧠 localStorage 记忆系统</div>
+      <div class="item-desc">对话与游戏数据持久化存储，下次打开即可恢复</div>
+      <ul class="item-list">
+        <li>对话历史持久化 <code>age_conversations_v10</code></li>
+        <li>游戏 DSL 独立存储 <code>age_game_{convId}</code></li>
+        <li>点击侧边栏历史项即可恢复完整对话与游戏卡片</li>
+      </ul>
+    </div>
+
+    <div class="item">
+      <div class="item-title">🎮 独立游戏页面（新标签页）</div>
+      <div class="item-desc">点击游戏卡片即可在新标签页打开完整游戏</div>
+      <ul class="item-list">
+        <li>从 URL 参数读取对话 ID，自动加载 localStorage 游戏数据</li>
+        <li>返回对话页按钮、重新开始按钮</li>
+        <li>游戏结束自动提示重开</li>
+        <li>数据不存在时显示友好错误页面</li>
+      </ul>
+    </div>
+
+    <div class="item">
+      <div class="item-title">⌨️ 快捷键支持</div>
+      <ul class="item-list">
+        <li><code>Ctrl+Shift+K</code> 新建对话</li>
+        <li><code>Enter</code> 发送消息</li>
+        <li><code>Shift+Enter</code> 换行</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══ 修改 ═══ -->
+  <div class="section">
+    <div class="section-title modified">
+      <span class="icon">🔄</span>
+      修改
+    </div>
+
+    <div class="item">
+      <div class="item-title">index.html — 布局重构</div>
+      <div class="item-desc">从单页游戏容器重构为侧边栏 + 主区域的聊天布局</div>
+    </div>
+
+    <div class="item">
+      <div class="item-title">styles.css — 主题升级</div>
+      <div class="item-desc">从深色游戏主题改为 AI 网页统一风格（白色主题 + 紫色强调色 <code>#4b3fe3</code>）</div>
+    </div>
+
+    <div class="item">
+      <div class="item-title">main.js — 架构重写</div>
+      <div class="item-desc">从命令式按钮重写为 <code>ChatUI</code> + <code>Memory</code> 双模块架构</div>
+      <ul class="item-list">
+        <li>引擎初始化保留（隐藏 canvas 供导演/测试模式后台使用）</li>
+        <li>Memory 模块管理 localStorage 全部读写</li>
+        <li>ChatUI 模块管理聊天交互全流程</li>
+        <li>三种生成模式保留：普通生成、生成+测试（3轮优化）、AI 导演</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ═══ 修复 ═══ -->
+  <div class="section">
+    <div class="section-title fixed">
+      <span class="icon">🔧</span>
+      修复
+    </div>
+
+    <div class="item">
+      <div class="item-title">
+        弹窗拦截问题
+        <span class="tag" style="background:#e6fff5;color:var(--green)">已修复</span>
+      </div>
+      <div class="item-desc">
+        游戏卡片「在新标签页打开」按钮被浏览器弹窗拦截器阻止。<br>
+        从 <code>window.open()</code> 改为 <code>&lt;a target="_blank"&gt;</code> 标准链接。
+      </div>
+    </div>
+
+    <div class="item">
+      <div class="item-title">
+        对话重复记录
+        <span class="tag" style="background:#e6fff5;color:var(--green)">已修复</span>
+      </div>
+      <div class="item-desc">
+        已有对话更新时产生重复记录。<br>
+        新对话使用 <code>Memory.add()</code>，已有对话使用 <code>Memory.update()</code>。
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 底部 ═══ -->
+  <div class="footer">
+    <p>AI 游戏引擎 v10.0 · 作者 benwei</p>
+    <p style="margin-top:4px">从 v9.3「AI 自主发现问题系统」升级而来</p>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,1 +1,315 @@
-*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0a;color:#eee;font-family:sans-serif;min-height:100vh;display:flex;justify-content:center;align-items:center}#container{position:relative;width:820px;background:#14141e;border-radius:16px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.9)}canvas{display:block;width:100%;aspect-ratio:800/400;border-radius:12px;background:linear-gradient(180deg,#1a1a2e 0,#16213e 50%,#0f3460 100%);cursor:pointer;touch-action:none}#ui{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}#prompt{flex:1;min-width:160px;padding:10px 14px;border-radius:8px;border:2px solid #2a2a4a;background:#1a1a2e;color:#eee;font-size:14px;transition:border .3s}#prompt:focus{outline:0;border-color:#00d4ff}#prompt::placeholder{color:#666}.btn{padding:10px 18px;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;transition:all .25s}.btn-primary{background:linear-gradient(135deg,#00d4ff,#0088ff);color:#fff;box-shadow:0 4px 16px rgba(0,212,255,.25)}.btn-primary:hover{transform:translateY(-2px)}.btn-preset{background:rgba(255,255,255,.07);color:#aaa;padding:8px 14px;font-size:12px;border:1px solid rgba(255,255,255,.06)}.btn-preset:hover{background:rgba(255,255,255,.15);color:#fff}#statusBar{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:8px 14px;border-radius:8px;background:#1a1a2e;border:1px solid #2a2a4a;font-size:13px;min-height:42px}#statusMsg{color:#88aacc}#statusMsg.error{color:#ff4466}#statusMsg.success{color:#44ff88}#statusStats{color:#667;font-size:12px;font-family:monospace}#hint{margin-top:8px;color:#445;font-size:12px;text-align:center}#chargeBar{position:absolute;bottom:130px;left:50%;transform:translateX(-50%);width:200px;height:8px;background:rgba(255,255,255,.1);border-radius:4px;z-index:10;display:none;overflow:hidden;border:1px solid rgba(255,255,255,.15)}#chargeFill{height:100%;width:0%;background:linear-gradient(90deg,#00ff88,#ffdd00,#ff4444);border-radius:4px;transition:width .05s}@media(max-width:850px){#container{width:100%;padding:10px;border-radius:0}#ui{flex-direction:column;align-items:stretch}.btn-preset{flex:1;text-align:center}#statusBar{flex-direction:column;gap:4px;align-items:flex-start}}
+/* ═══════════════════════════════════════
+   AI 游戏引擎 — AI 网页统一风格聊天 UI
+   ═══════════════════════════════════════ */
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+
+:root{
+  --bg:#ffffff;
+  --sidebar-bg:#f7f7f8;
+  --chat-bg:#ffffff;
+  --input-bg:#f7f7f8;
+  --border:#e5e5e5;
+  --border-light:#f0f0f0;
+  --text:#1a1a1a;
+  --text-muted:#666;
+  --text-light:#999;
+  --accent:#4b3fe3;
+  --accent-soft:#f2f7ff;
+  --radius:12px;
+  --radius-sm:8px;
+  --radius-pill:999px;
+  --sidebar-w:260px;
+  --topbar-h:56px;
+}
+
+body{
+  font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  display:flex;
+  height:100vh;
+  overflow:hidden;
+  font-size:14px;
+}
+
+/* ════ 侧边栏 ════ */
+#sidebar{
+  width:var(--sidebar-w);
+  min-width:var(--sidebar-w);
+  background:var(--sidebar-bg);
+  border-right:1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+  height:100vh;
+}
+
+.sidebar-header{
+  padding:16px 16px 8px;
+}
+.brand{display:flex;align-items:center;gap:8px}
+.brand-icon{
+  width:32px;height:32px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;
+  background:var(--bg);border-radius:var(--radius-sm);
+  border:1px solid var(--border);
+}
+.brand-name{font-size:15px;font-weight:600;color:var(--text)}
+
+.btn-new-chat{
+  margin:8px 12px;
+  padding:10px 14px;
+  border:1px solid var(--border);
+  background:var(--bg);
+  border-radius:var(--radius-sm);
+  display:flex;align-items:center;gap:8px;
+  cursor:pointer;font-size:14px;color:var(--text);
+  transition:all .15s;
+  width:calc(100% - 24px);
+}
+.btn-new-chat:hover{border-color:var(--accent);color:var(--accent)}
+.btn-new-chat svg{flex-shrink:0}
+.btn-new-chat span{flex:1;text-align:left}
+.btn-new-chat kbd{
+  font-size:11px;color:var(--text-light);
+  background:transparent;border:none;
+}
+
+.sidebar-section{flex:1;overflow-y:auto;padding:0 8px}
+.sidebar-label{
+  font-size:12px;color:var(--text-light);
+  padding:8px 8px 4px;
+}
+
+.history-list{display:flex;flex-direction:column;gap:2px}
+.history-item{
+  padding:10px 12px;
+  border-radius:var(--radius-sm);
+  cursor:pointer;
+  font-size:13px;color:var(--text-muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:all .15s;
+  display:flex;align-items:center;gap:8px;
+  position:relative;
+}
+.history-item:hover{background:var(--border-light);color:var(--text)}
+.history-item.active{background:var(--accent-soft);color:var(--accent)}
+.history-item .h-icon{flex-shrink:0;font-size:14px}
+.history-item .h-text{flex:1;overflow:hidden;text-overflow:ellipsis}
+.history-item .h-del{
+  display:none;width:20px;height:20px;
+  align-items:center;justify-content:center;
+  border-radius:4px;font-size:14px;color:var(--text-light);
+}
+.history-item:hover .h-del{display:flex}
+.history-item .h-del:hover{background:var(--border);color:var(--text)}
+.history-empty{
+  padding:12px 8px;font-size:13px;color:var(--text-light);text-align:center;
+}
+
+.sidebar-footer{padding:8px 12px;border-top:1px solid var(--border-light)}
+.sidebar-footer-btn{
+  width:100%;padding:8px;border:none;
+  background:transparent;border-radius:var(--radius-sm);
+  font-size:12px;color:var(--text-light);cursor:pointer;
+}
+.sidebar-footer-btn:hover{background:var(--border-light);color:var(--text)}
+
+/* ════ 主区域 ════ */
+#main{
+  flex:1;display:flex;flex-direction:column;
+  height:100vh;min-width:0;
+}
+
+.topbar{
+  height:var(--topbar-h);min-height:var(--topbar-h);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  padding:0 24px;
+}
+.topbar-title{font-size:15px;font-weight:600}
+
+.chat-area{
+  flex:1;overflow-y:auto;
+  display:flex;flex-direction:column;
+}
+
+/* 欢迎页 */
+.welcome{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:40px 24px;gap:32px;
+}
+.hero-text{
+  font-size:26px;font-weight:700;color:var(--text);
+  text-align:center;
+}
+.suggestion-chips{
+  display:flex;flex-wrap:wrap;gap:10px;
+  justify-content:center;max-width:680px;
+}
+.chip{
+  padding:10px 18px;
+  background:var(--input-bg);
+  border:1px solid var(--border);
+  border-radius:var(--radius-pill);
+  font-size:13px;color:var(--text);
+  cursor:pointer;transition:all .15s;
+  white-space:nowrap;
+}
+.chip:hover{
+  background:var(--accent-soft);border-color:var(--accent);
+  color:var(--accent);
+}
+
+/* 聊天消息 */
+.messages{max-width:840px;margin:0 auto;width:100%;padding:0 24px 24px}
+
+.msg{
+  display:flex;gap:12px;margin-bottom:24px;
+}
+.msg-avatar{
+  width:36px;height:36px;min-width:36px;
+  border-radius:var(--radius-sm);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;flex-shrink:0;
+}
+.msg-user .msg-avatar{background:#e8eaff}
+.msg-ai .msg-avatar{background:var(--accent);color:#fff;font-size:16px}
+.msg-body{
+  flex:1;min-width:0;
+  padding-top:4px;
+}
+.msg-role{
+  font-size:13px;font-weight:600;color:var(--text);
+  margin-bottom:4px;
+}
+.msg-text{
+  font-size:14px;line-height:1.7;color:var(--text);
+  word-break:break-word;
+}
+.msg-status{
+  font-size:12px;color:var(--text-light);
+  margin-top:4px;
+}
+.msg-error{color:#e8463a}
+.msg-success{color:#1dc981}
+
+/* 游戏卡片 */
+.game-card{
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:16px;margin-top:8px;
+  background:var(--input-bg);
+}
+.game-card-title{
+  font-size:14px;font-weight:600;margin-bottom:8px;
+  display:flex;align-items:center;gap:8px;
+}
+.game-card-info{
+  font-size:13px;color:var(--text-muted);
+  line-height:1.6;
+}
+.game-card-info span{margin-right:12px}
+.game-card-btn{
+  margin-top:12px;padding:8px 16px;
+  background:var(--accent);color:#fff;
+  border:none;border-radius:var(--radius-sm);
+  font-size:13px;font-weight:500;cursor:pointer;
+  transition:all .15s;display:inline-flex;align-items:center;gap:6px;
+  text-decoration:none;display:inline-block;
+}
+.game-card-btn:hover{opacity:.85;color:#fff}
+
+/* 加载动画 */
+.msg-loading{display:flex;gap:4px;padding:8px 0}
+.msg-loading span{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--text-light);
+  animation:bounce 1.4s infinite ease-in-out both;
+}
+.msg-loading span:nth-child(1){animation-delay:-.32s}
+.msg-loading span:nth-child(2){animation-delay:-.16s}
+@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}
+
+/* ════ 底部输入栏 ════ */
+.input-bar{
+  padding:12px 24px 16px;
+  background:var(--bg);
+  border-top:1px solid var(--border-light);
+}
+.input-container{
+  max-width:840px;margin:0 auto;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  background:var(--input-bg);
+  display:flex;align-items:flex-end;gap:8px;
+  padding:8px 12px;
+  transition:border-color .15s;
+}
+.input-container:focus-within{border-color:var(--accent)}
+
+.input-tools-left{
+  display:flex;gap:2px;align-items:center;padding-bottom:4px;
+}
+.input-tools-right{
+  display:flex;gap:2px;align-items:center;padding-bottom:4px;
+}
+
+.tool-btn{
+  width:32px;height:32px;
+  border:none;background:transparent;
+  border-radius:var(--radius-sm);
+  cursor:pointer;font-size:16px;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;flex-shrink:0;
+}
+.tool-btn:hover{background:var(--border-light)}
+.tool-btn .tool-label{font-size:12px;margin-left:2px}
+.tool-director:hover{background:#f3e8ff}
+.tool-test:hover{background:#fff4e6}
+
+.chat-input{
+  flex:1;border:none;background:transparent;
+  resize:none;outline:none;
+  font-size:14px;line-height:1.6;
+  font-family:inherit;color:var(--text);
+  max-height:200px;padding:8px 4px;
+  min-height:24px;
+}
+.chat-input::placeholder{color:var(--text-light)}
+
+.btn-submit{
+  width:36px;height:36px;
+  border:none;background:var(--accent);
+  color:#fff;border-radius:var(--radius-sm);
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;flex-shrink:0;
+}
+.btn-submit:hover{opacity:.85;transform:scale(1.05)}
+.btn-submit:disabled{background:var(--border);cursor:not-allowed;transform:none}
+
+.input-hint{
+  text-align:center;font-size:12px;
+  color:var(--text-light);margin-top:8px;
+  max-width:840px;margin-left:auto;margin-right:auto;
+}
+
+/* ════ 响应式 ════ */
+@media(max-width:768px){
+  :root{--sidebar-w:0px}
+  #sidebar{
+    position:fixed;z-index:100;
+    width:260px;transform:translateX(-100%);
+    transition:transform .2s;
+  }
+  #sidebar.open{transform:translateX(0)}
+  .hero-text{font-size:20px}
+  .messages{padding:0 12px 16px}
+  .input-bar{padding:8px 12px 12px}
+  .tool-label{display:none}
+  .input-hint{display:none}
+}
