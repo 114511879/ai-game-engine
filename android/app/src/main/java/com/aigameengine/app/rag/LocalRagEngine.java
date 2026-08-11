@@ -11,7 +11,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-public final class LocalRagEngine implements AutoCloseable {
+public final class LocalRagEngine implements RagOperations {
     private static final int MAX_TOP_K = 20;
     private static final int MAX_USER_EXAMPLES = 1000;
 
