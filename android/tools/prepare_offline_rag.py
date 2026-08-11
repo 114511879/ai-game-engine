@@ -3,9 +3,11 @@
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import struct
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -21,6 +23,7 @@ MAGIC = b"AGERAG1\0"
 
 _SNAPSHOT_PATH = Path("models--BAAI--bge-small-zh-v1.5") / "snapshots" / MODEL_REVISION
 _ARTIFACT_NAMES = ("model.onnx", "vocab.txt", "seed-documents.jsonl", "seed-vectors.bin")
+_BUNDLE_NAMES = frozenset((*_ARTIFACT_NAMES, "model-manifest.json"))
 
 
 def write_seed_vectors(path: Path, rows: Iterable[tuple[str, Iterable[float]]], dimension: int) -> None:
@@ -130,8 +133,31 @@ def publish_validated_model(unquantized: Path, quantized: Path, target: Path) ->
     shutil.copyfile(quantized, target)
 
 
+def publish_asset_directory(staging: Path, output: Path) -> None:
+    """Replace an asset directory with rollback if publication cannot complete."""
+    if not staging.is_dir():
+        raise ValueError(f"staging directory does not exist: {staging}")
+    if not output.exists():
+        os.replace(staging, output)
+        return
+
+    backup = output.with_name(f".{output.name}.backup-{uuid.uuid4().hex}")
+    os.replace(output, backup)
+    try:
+        os.replace(staging, output)
+    except Exception:
+        os.replace(backup, output)
+        raise
+    try:
+        shutil.rmtree(backup)
+    except OSError:
+        # Publication succeeded; a stale backup is safer than undoing live assets.
+        pass
+
+
 def canonicalize_seed_documents(seed: Path, target: Path) -> list[dict[str, Any]]:
     documents: list[dict[str, Any]] = []
+    document_ids: set[str] = set()
     with seed.open("r", encoding="utf-8") as source, target.open("w", encoding="utf-8", newline="\n") as output:
         for line_number, line in enumerate(source, start=1):
             if not line.strip():
@@ -144,6 +170,9 @@ def canonicalize_seed_documents(seed: Path, target: Path) -> list[dict[str, Any]
                 raise ValueError(f"seed document {line_number} must have a string id")
             if not isinstance(document.get("content"), str):
                 raise ValueError(f"seed document {line_number} must have string content")
+            if document["id"] in document_ids:
+                raise ValueError(f"duplicate seed document id: {document['id']}")
+            document_ids.add(document["id"])
             documents.append(document)
             output.write(json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             output.write("\n")
@@ -201,16 +230,18 @@ def export_quantized_model(snapshot: Path, output: Path) -> tuple[Any, Any]:
         quantize_dynamic(
             str(unquantized), str(quantized), weight_type=QuantType.QInt8, per_channel=True
         )
-        validate_quantized_session(ort, tokenizer, quantized)
+        validation_session = validate_quantized_session(ort, tokenizer, quantized)
+        del validation_session
         publish_validated_model(unquantized, quantized, output / "model.onnx")
         quantized.unlink()
         intermediate_directory.rmdir()
     except Exception:
         raise RuntimeError(f"model export failed; intermediates retained at {intermediate_directory}") from None
-    return tokenizer, model
+    session = validate_quantized_session(ort, tokenizer, output / "model.onnx")
+    return tokenizer, session
 
 
-def validate_quantized_session(ort: Any, tokenizer: Any, model_path: Path) -> None:
+def validate_quantized_session(ort: Any, tokenizer: Any, model_path: Path) -> Any:
     session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
     input_names = [item.name for item in session.get_inputs()]
     if input_names != ["input_ids", "attention_mask", "token_type_ids"]:
@@ -239,21 +270,28 @@ def validate_quantized_session(ort: Any, tokenizer: Any, model_path: Path) -> No
             raise ValueError(f"unexpected ONNX output shape: {output.shape}")
         if not np.all(np.isfinite(output)):
             raise ValueError("non-finite ONNX output")
+    return session
 
 
-def embed_documents(model: Any, tokenizer: Any, documents: list[dict[str, Any]]) -> list[tuple[str, list[float]]]:
-    import torch
-
+def embed_documents_from_session(
+    session: Any, tokenizer: Any, documents: list[dict[str, Any]]
+) -> list[tuple[str, list[float]]]:
     rows: list[tuple[str, list[float]]] = []
-    model.eval()
     for document in documents:
         # Document embeddings deliberately exclude the retrieval-only query prefix.
         encoded = tokenizer(
-            document["content"], return_tensors="pt", truncation=True, max_length=MAX_TOKENS
+            document["content"], return_tensors="np", truncation=True, max_length=MAX_TOKENS
         )
-        with torch.inference_mode():
-            hidden_state = model(**encoded, return_dict=True).last_hidden_state
-        embedding = hidden_state[:, 0, :].detach().cpu().numpy().astype(np.float32)
+        token_type_ids = encoded.get("token_type_ids", np.zeros_like(encoded["input_ids"]))
+        hidden_state = session.run(
+            ["last_hidden_state"],
+            {
+                "input_ids": encoded["input_ids"].astype(np.int64),
+                "attention_mask": encoded["attention_mask"].astype(np.int64),
+                "token_type_ids": token_type_ids.astype(np.int64),
+            },
+        )[0]
+        embedding = hidden_state[:, 0, :].astype(np.float32)
         normalized = l2_normalize(embedding)[0]
         if normalized.shape[0] != DIMENSION:
             raise ValueError(f"unexpected embedding dimension: {normalized.shape[0]}")
@@ -261,25 +299,76 @@ def embed_documents(model: Any, tokenizer: Any, documents: list[dict[str, Any]])
     return rows
 
 
+def verify_asset_bundle(directory: Path, expected_document_count: int) -> dict[str, Any]:
+    files = {path.name for path in directory.iterdir() if path.is_file()}
+    if files != _BUNDLE_NAMES:
+        raise ValueError(f"unexpected asset files: {sorted(files)}")
+    manifest = json.loads((directory / "model-manifest.json").read_text(encoding="utf-8"))
+    if (
+        manifest.get("model_id") != MODEL_ID
+        or manifest.get("model_revision") != MODEL_REVISION
+        or manifest.get("dimension") != DIMENSION
+        or manifest.get("max_tokens") != MAX_TOKENS
+        or manifest.get("query_prefix") != QUERY_PREFIX
+        or manifest.get("pooling") != "cls"
+        or manifest.get("l2_normalize") is not True
+    ):
+        raise ValueError("invalid model manifest contract")
+
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, dict) or set(artifacts) != set(_ARTIFACT_NAMES):
+        raise ValueError("invalid model manifest artifacts")
+    for name in _ARTIFACT_NAMES:
+        if artifacts[name] != sha256_file(directory / name):
+            raise ValueError(f"asset hash mismatch: {name}")
+
+    documents = [
+        json.loads(line)
+        for line in (directory / "seed-documents.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    vectors = read_seed_vectors(directory / "seed-vectors.bin")
+    if len(documents) != expected_document_count or len(vectors) != expected_document_count:
+        raise ValueError("unexpected seed document count")
+    document_ids = [document.get("id") for document in documents]
+    if any(not isinstance(document_id, str) for document_id in document_ids):
+        raise ValueError("invalid seed document identifier")
+    if len(set(document_ids)) != len(document_ids):
+        raise ValueError("duplicate seed document id")
+    if document_ids != [document_id for document_id, _ in vectors]:
+        raise ValueError("seed vectors are not in document order")
+    for _, vector in vectors:
+        if len(vector) != DIMENSION or not np.all(np.isfinite(vector)):
+            raise ValueError("invalid seed vector")
+        if not np.isclose(np.linalg.norm(vector), 1.0, rtol=0, atol=1e-5):
+            raise ValueError("seed vector is not normalized")
+    return manifest
+
+
 def prepare_assets(model_cache: Path, seed: Path, output: Path) -> dict[str, Any]:
     snapshot = resolve_snapshot(model_cache)
-    output.mkdir(parents=True, exist_ok=True)
-    tokenizer, model = export_quantized_model(snapshot, output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{output.name}.staging-", dir=output.parent))
+    session = None
     try:
-        shutil.copyfile(snapshot / "vocab.txt", output / "vocab.txt")
-        documents = canonicalize_seed_documents(seed, output / "seed-documents.jsonl")
-        rows = embed_documents(model, tokenizer, documents)
-        write_seed_vectors(output / "seed-vectors.bin", rows, DIMENSION)
-        artifacts = {name: sha256_file(output / name) for name in _ARTIFACT_NAMES}
+        tokenizer, session = export_quantized_model(snapshot, staging)
+        shutil.copyfile(snapshot / "vocab.txt", staging / "vocab.txt")
+        documents = canonicalize_seed_documents(seed, staging / "seed-documents.jsonl")
+        rows = embed_documents_from_session(session, tokenizer, documents)
+        write_seed_vectors(staging / "seed-vectors.bin", rows, DIMENSION)
+        artifacts = {name: sha256_file(staging / name) for name in _ARTIFACT_NAMES}
         manifest = build_manifest(MODEL_REVISION, DIMENSION, MAX_TOKENS, artifacts)
-        (output / "model-manifest.json").write_text(
+        (staging / "model-manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n",
             encoding="utf-8",
             newline="\n",
         )
+        verify_asset_bundle(staging, len(documents))
+        publish_asset_directory(staging, output)
         return manifest
     finally:
-        del model
+        del session
+        if staging.exists():
+            shutil.rmtree(staging)
 
 
 def parse_args() -> argparse.Namespace:
