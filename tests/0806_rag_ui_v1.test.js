@@ -53,9 +53,13 @@ const { chromium } = require('playwright');
     });
   });
 
-  await page.goto('http://127.0.0.1:4173/');
+  const staticPort = process.env.AGE_TEST_STATIC_PORT || '4173';
+  await page.goto('http://127.0.0.1:' + staticPort + '/');
   await page.waitForURL(/AI-ENGINE/);
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem('age.deepseek_api_key', 'test-runtime-key');
+  });
   await page.reload();
   await page.locator('#prompt').fill('我想做一个类似黑魂但是有魔法和开放世界的游戏');
   await page.locator('#btnSubmit').click();
