@@ -1,0 +1,2 @@
+/** Spawner.js */
+(function(){var A=window.AGE;A.Spawner=function(ec,pc){this.enemyCfg=ec;this.powerupCfg=pc;};A.Spawner.prototype.setEnemyCfg=function(c){this.enemyCfg=c;};A.Spawner.prototype.setPowerupCfg=function(c){this.powerupCfg=c;};A.Spawner.prototype.shouldSpawnEnemy=function(f){return f%(this.enemyCfg.spawnRate||55)===0;};A.Spawner.prototype.shouldSpawnPowerup=function(f){return f%(this.powerupCfg.spawnRate||200)===0;};})();

@@ -1,0 +1,14 @@
+/** RPGPlugin.js - leveling, equipment and combat */
+(function(){var A=window.AGE,T=A.PluginTools;
+A.RPGPlugin={name:'rpg',label:'角色扮演',ownsLoop:true,
+preset:{meta:{game_type:'rpg',title:'边境勇者'},player:{hp:12,speed:3,size:28},rules:{win_condition:'quest_complete',win_value:8},world:{theme:'forest'},rpg:{target_kills:8,enemy_hp:18,enemy_damage:2}},
+onLoad:function(e,d){var c=d.rpg||{};e._noDefaultSpawn=true;e.rpg={level:1,exp:0,nextExp:20,gold:0,kills:0,target:c.target_kills||8,enemyHP:c.enemy_hp||18,enemyMax:c.enemy_hp||18,enemyDamage:c.enemy_damage||2,enemyTimer:120,attackCD:0,weapon:1,potions:2};e.player.hp=Math.max(e.player.hp||0,12);e.player.maxHp=e.player.hp;},
+_attack:function(e){var s=e.rpg;if(s.attackCD>0)return;var damage=4+s.level*2+s.weapon*2;s.enemyHP-=damage;s.attackCD=18;e.score+=damage;if(s.enemyHP<=0){s.kills++;s.exp+=10+s.level*2;s.gold+=8;s.enemyMax+=2;s.enemyHP=s.enemyMax;s.enemyTimer=120;if(s.exp>=s.nextExp){s.exp-=s.nextExp;s.level++;s.nextExp=Math.floor(s.nextExp*1.45);e.player.maxHp+=3;e.player.hp=e.player.maxHp;}}},
+_equip:function(e){var s=e.rpg,cost=s.weapon*18;if(s.gold>=cost){s.gold-=cost;s.weapon++;}},
+_heal:function(e){var s=e.rpg;if(s.potions>0&&e.player.hp<e.player.maxHp){s.potions--;e.player.hp=Math.min(e.player.maxHp,e.player.hp+6);}},
+onUpdate:function(e){var s=e.rpg;if(s.attackCD>0)s.attackCD--;s.enemyTimer--;if(s.enemyTimer<=0){e.player.hp-=s.enemyDamage;s.enemyTimer=120;if(e.player.hp<=0)T.fail(e,'勇者倒下了');}if(s.kills>=s.target)T.win(e,'边境任务完成');},
+onAllKeys:function(e,k){if(k==='j'||k===' '||k==='1')this._attack(e);else if(k==='e'||k==='2')this._equip(e);else if(k==='q'||k==='3')this._heal(e);},onPluginKey:function(){},
+aiStep:function(e){if(e.player.hp<=e.player.maxHp*.45)this._heal(e);if(e.rpg.gold>=e.rpg.weapon*18)this._equip(e);this._attack(e);},
+onRender:function(e){var c=e.renderer.ctx,s=e.rpg;T.background(c,'#16231c','边境勇者','击败 '+s.target+' 名敌人完成任务');T.panel(c,20,70,230,290);T.text(c,'等级 '+s.level,38,102,'#f4d35e',18);T.bar(c,38,128,190,12,e.player.hp,e.player.maxHp,'#e65364','生命 '+e.player.hp+'/'+e.player.maxHp);T.bar(c,38,166,190,10,s.exp,s.nextExp,'#55a7ff','经验 '+s.exp+'/'+s.nextExp);T.text(c,'武器 +'+s.weapon,38,210);T.text(c,'金币 '+s.gold,38,238,'#f4d35e');T.text(c,'药水 '+s.potions,38,266,'#6ee7b7');T.text(c,'讨伐 '+s.kills+'/'+s.target,38,304);T.panel(c,280,70,490,290);T.text(c,'荒野魔物',525,112,'#ff8b8b',20,'center');T.bar(c,370,150,310,18,s.enemyHP,s.enemyMax,'#d94b5f','敌人生命 '+Math.max(0,s.enemyHP)+'/'+s.enemyMax);c.fillStyle='#8f3443';c.fillRect(490,195,70,105);c.fillStyle='#ffd0d6';c.fillRect(505,212,12,12);c.fillRect(535,212,12,12);T.text(c,'J/空格 攻击 · E 强化装备 · Q 使用药水',525,338,'rgba(255,255,255,.7)',12,'center');},
+getStatsText:function(e){var s=e.rpg;return' 等级:'+s.level+' 讨伐:'+s.kills+'/'+s.target;},getHint:function(){return'J/空格=攻击 E=强化装备 Q=药水';}};
+})();

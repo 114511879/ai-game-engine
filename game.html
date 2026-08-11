@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>游戏 — AI 游戏引擎</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  background:#f7f7f8;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:100vh;
+  padding:20px;
+}
+#game-wrapper{
+  width:100%;
+  max-width:840px;
+  background:#fff;
+  border:1px solid #e5e5e5;
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:0 4px 24px rgba(0,0,0,.06);
+}
+#game-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:12px 20px;
+  border-bottom:1px solid #f0f0f0;
+  background:#fafafa;
+}
+.header-btn{
+  padding:6px 14px;
+  border:1px solid #e5e5e5;
+  background:#fff;
+  border-radius:8px;
+  cursor:pointer;
+  font-size:13px;
+  color:#333;
+  transition:all .15s;
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+}
+.header-btn:hover{border-color:#4b3fe3;color:#4b3fe3}
+#gameTitle{
+  font-size:15px;
+  font-weight:600;
+  color:#1a1a1a;
+  text-align:center;
+  flex:1;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  padding:0 12px;
+}
+#canvas-container{
+  position:relative;
+  width:100%;
+  background:#0f0f1a;
+}
+#game{
+  display:block;
+  width:100%;
+  aspect-ratio:800/400;
+  cursor:pointer;
+  touch-action:none;
+}
+#statusBar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 20px;
+  background:#fafafa;
+  border-top:1px solid #f0f0f0;
+  font-size:13px;
+  min-height:42px;
+}
+#statusMsg{color:#666}
+#statusMsg.error{color:#e8463a}
+#statusMsg.success{color:#1dc981}
+#statusStats{color:#999;font-size:12px;font-family:monospace}
+#hint{
+  padding:8px 20px 16px;
+  text-align:center;
+  font-size:12px;
+  color:#999;
+}
+#chargeBar{
+  position:absolute;
+  bottom:16px;
+  left:50%;
+  transform:translateX(-50%);
+  width:200px;
+  height:8px;
+  background:rgba(255,255,255,.1);
+  border-radius:4px;
+  z-index:10;
+  display:none;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.15);
+}
+#chargeFill{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,#00ff88,#ffdd00,#ff4444);
+  border-radius:4px;
+  transition:width .05s;
+}
+#error-page{
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:80px 24px;
+  gap:16px;
+}
+#error-page h2{font-size:18px;color:#e8463a}
+#error-page p{font-size:14px;color:#666;text-align:center}
+.error-btn{
+  padding:10px 24px;
+  background:#4b3fe3;
+  color:#fff;
+  border:none;
+  border-radius:8px;
+  font-size:14px;
+  cursor:pointer;
+}
+.error-btn:hover{opacity:.85}
+@media(max-width:768px){
+  #game-header{padding:8px 12px}
+  .header-btn{padding:5px 10px;font-size:12px}
+  #gameTitle{font-size:13px}
+  #statusBar{padding:8px 12px;flex-direction:column;gap:4px;align-items:flex-start}
+  #hint{padding:6px 12px 12px}
+}
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <!-- 错误页面（游戏数据不存在时） -->
+  <div id="error-page">
+    <h2>🎮 游戏数据未找到</h2>
+    <p>该对话的游戏数据可能已被清除，或链接已失效。<br>请返回对话页面重新生成游戏。</p>
+    <button class="error-btn" onclick="window.close()">返回对话</button>
+  </div>
+
+  <!-- 游戏主体 -->
+  <div id="game-main" style="display:none">
+    <div id="game-header">
+      <button class="header-btn" id="btnBack" title="返回对话页面">← 返回</button>
+      <span id="gameTitle">加载中...</span>
+      <button class="header-btn" id="btnRestart" title="重新开始游戏">🔄 重开</button>
+    </div>
+    <div id="canvas-container">
+      <canvas id="game" width="800" height="400"></canvas>
+      <div id="chargeBar"><div id="chargeFill"></div></div>
+    </div>
+    <div id="statusBar">
+      <span id="statusMsg">准备中...</span>
+      <span id="statusStats">v10.0</span>
+    </div>
+    <div id="hint">空格或点击 = 跳跃</div>
+  </div>
+</div>
+
+<!-- ============ 引擎脚本 ============ -->
+<script src="core/dsl/Config.js"></script>
+<script src="core/engine/GameStandard.js"></script>
+<script src="core/engine/GameState.js"></script>
+<script src="core/runtime/helpers.js"></script>
+<script src="core/runtime/Collision.js"></script>
+<script src="core/runtime/Enemy.js"></script>
+<script src="core/runtime/Powerup.js"></script>
+<script src="core/runtime/Particle.js"></script>
+<script src="core/runtime/Player.js"></script>
+<script src="core/runtime/Physics.js"></script>
+<script src="core/runtime/Spawner.js"></script>
+<script src="core/runtime/Input.js"></script>
+<script src="core/runtime/Renderer.js"></script>
+<script src="core/dsl/Rules.js"></script>
+<script src="core/dsl/PhaseManager.js"></script>
+<script src="core/dsl/SkillEngine.js"></script>
+<script src="core/dsl/LevelManager.js"></script>
+<script src="core/dsl/MapSystem.js"></script>
+<script src="core/dsl/AssetSystem.js"></script>
+<script src="core/dsl/BossSystem.js"></script>
+<script src="core/dsl/SkillSystem.js?v=4"></script>
+<script src="core/dsl/DSLBinder.js?v=6"></script>
+<script src="core/dsl/PluginSelector.js"></script>
+<script src="ai/tester/PlayTestSystem.js"></script>
+<script src="ai/tester/BugDetector.js"></script>
+<script src="ai/tester/agent.js"></script>
+<script src="ai/tester/observer.js"></script>
+<script src="ai/tester/anomaly.js"></script>
+<script src="ai/tester/debugger.js"></script>
+<script src="ai/tester/fixer.js"></script>
+<script src="ai/tester/trainer.js"></script>
+<script src="plugins/runner/RunnerPlugin.js"></script>
+<script src="plugins/shooter/ShooterPlugin.js"></script>
+<script src="plugins/rpg/PlatformPlugin.js"></script>
+<script src="plugins/rpg/DungeonPlugin.js?v=2"></script>
+<script src="plugins/common/PluginTools.js"></script>
+<script src="plugins/rpg/RPGPlugin.js"></script>
+<script src="plugins/strategy/StrategyPlugin.js"></script>
+<script src="plugins/tower_defense/TowerDefensePlugin.js"></script>
+<script src="plugins/card/CardPlugin.js"></script>
+<script src="plugins/simulation/SimulationPlugin.js"></script>
+<script src="plugins/sandbox/SandboxPlugin.js"></script>
+<script src="plugins/racing/RacingPlugin.js"></script>
+<script src="ai/generator/AIGenerator.js"></script>
+<script src="fitness/types.js"></script>
+<script src="fitness/WeightProfile.js"></script>
+<script src="fitness/MetricsNormalizer.js"></script>
+<script src="fitness/PenaltyCalculator.js"></script>
+<script src="fitness/FitnessCalculator.js"></script>
+<script src="ai/protocols/AgentProtocols.js"></script>
+<script src="ai/intent/IntentParserAgent.js"></script>
+<script src="ai/research/RAGClient.js"></script>
+<script src="ai/research/ContextRouter.js"></script>
+<script src="ai/agents/BaseAgent.js"></script>
+<script src="ai/agents/DesignerAgent.js"></script>
+<script src="ai/agents/LevelAgent.js"></script>
+<script src="ai/agents/CombatAgent.js"></script>
+<script src="ai/agents/StoryAgent.js"></script>
+<script src="ai/agents/EconomyAgent.js"></script>
+<script src="ai/agents/AssetAgent.js"></script>
+<script src="ai/agents/AgentRegistry.js"></script>
+<script src="ai/quality/PreQAValidator.js"></script>
+<script src="ai/quality/ConstraintEngine.js"></script>
+<script src="ai/quality/FinalQA.js"></script>
+<script src="ai/evaluation/BlueprintMetadata.js"></script>
+<script src="ai/director/DirectorAgent.js"></script>
+<script src="ai/simulation/SimulationMemory.js"></script>
+<script src="ai/simulation/SimulationAgent.js"></script>
+<script src="ai/director/GameDirector.js"></script>
+<script src="core/engine/Engine.js"></script>
+<script src="plugins/story/StoryPlugin.js?v=15"></script>
+
+<!-- ============ 游戏页面逻辑 ============ -->
+<script>
+(function(){
+  var A = window.AGE;
+  if(!A){showError('引擎加载失败');return;}
+
+  // 从 URL 获取对话 ID
+  var params = new URLSearchParams(window.location.search);
+  var convId = params.get('id');
+
+  if(!convId){
+    showError('缺少游戏 ID');
+    return;
+  }
+
+  // 从 localStorage 加载游戏 DSL
+  var dslRaw = null;
+  try{
+    dslRaw = localStorage.getItem('age_game_' + convId);
+  }catch(e){
+    showError('无法读取本地存储');
+    return;
+  }
+
+  if(!dslRaw){
+    showError('游戏数据不存在');
+    return;
+  }
+
+  var dsl;
+  try{
+    dsl = JSON.parse(dslRaw);
+  }catch(e){
+    showError('游戏数据格式错误');
+    return;
+  }
+
+  // 显示游戏界面
+  document.getElementById('error-page').style.display = 'none';
+  document.getElementById('game-main').style.display = 'block';
+
+  // 初始化插件管理器
+  A.PluginManager = {
+    _list: [],
+    register: function(p){this._list.push(p);},
+    get: function(n){
+      for(var i=0;i<this._list.length;i++)
+        if(this._list[i].name===n) return this._list[i];
+      return null;
+    }
+  };
+  A.PluginManager.register(A.RunnerPlugin);
+  A.PluginManager.register(A.ShooterPlugin);
+  A.PluginManager.register(A.PlatformPlugin);
+  A.PluginManager.register(A.DungeonPlugin);
+  A.PluginManager.register(A.StoryPlugin);
+  A.PluginManager.register(A.RPGPlugin);
+  A.PluginManager.register(A.StrategyPlugin);
+  A.PluginManager.register(A.TowerDefensePlugin);
+  A.PluginManager.register(A.CardPlugin);
+  A.PluginManager.register(A.SimulationPlugin);
+  A.PluginManager.register(A.SandboxPlugin);
+  A.PluginManager.register(A.RacingPlugin);
+
+  // 初始化引擎
+  var cv = document.getElementById('game');
+  var eng = new A.GameEngine(cv);
+  A._currentEngine = eng;
+
+  // 绑定输入
+  var inp = new A.InputManager({
+    canvas: cv,
+    onChargeStart: function(){
+      var s = A.getGameState();
+      if(s === A.STATE.GAMEOVER || s === A.STATE.WIN || eng.gameOver || eng._win){
+        eng.restart();
+        return;
+      }
+      eng.startCharge();
+    },
+    onChargeRelease: function(){
+      var s = A.getGameState();
+      if(s === A.STATE.GAMEOVER || s === A.STATE.WIN || eng.gameOver || eng._win) return;
+      eng.releaseJump();
+    },
+    onChargeCancel: function(){
+      eng.cancelCharge();
+    },
+    onAllKey: function(k){
+      var s = A.getGameState();
+      if(s === A.STATE.GAMEOVER || s === A.STATE.WIN || eng.gameOver || eng._win){
+        // 游戏结束时按任意键重启
+        if(k === ' ' || k === 'enter' || k === 'r'){
+          eng.restart();
+        }
+        return;
+      }
+      if(eng.plugin && eng.plugin.onAllKeys) eng.plugin.onAllKeys(eng, k);
+      if(k !== ' ' && eng.plugin && eng.plugin.onPluginKey) eng.plugin.onPluginKey(eng, k);
+    }
+  });
+  inp.bind();
+
+  // 加载并启动游戏
+  var gt = ((dsl.meta || {}).game_type || 'runner');
+  var plugin = A.PluginSelector.select(gt, A.PluginManager);
+  eng.load(dsl, plugin);
+  A.setGameState(A.STATE.RUNNING);
+
+  // 设置标题
+  var title = ((dsl.meta || {}).title || '未命名游戏');
+  document.getElementById('gameTitle').textContent = title;
+  A.setStatus('[' + gt + '] ' + title + ' — 游戏开始！', 'success');
+
+  // 设置操作提示
+  var hintEl = document.getElementById('hint');
+  function updateHint(){
+    if(eng.plugin && eng.plugin.getHint){
+      hintEl.textContent = eng.plugin.getHint();
+    }else{
+      hintEl.textContent = '空格/点击 = 跳跃 · 游戏结束后按空格重开';
+    }
+  }
+  updateHint();
+
+  // 重新开始按钮
+  document.getElementById('btnRestart').addEventListener('click', function(){
+    eng.restart();
+    A.setStatus('游戏已重新开始', 'success');
+    updateHint();
+  });
+
+  // 返回按钮
+  document.getElementById('btnBack').addEventListener('click', function(){
+    if(window.opener){
+      window.close();
+    }else{
+      window.history.back();
+    }
+  });
+
+  // 游戏循环
+  function loop(){
+    eng.update();
+    eng.render();
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+  // 错误处理函数
+  function showError(msg){
+    var ep = document.getElementById('error-page');
+    var gm = document.getElementById('game-main');
+    if(ep){
+      ep.style.display = 'flex';
+      ep.querySelector('p').textContent = msg + ' — 请返回对话页面重新生成游戏。';
+    }
+    if(gm) gm.style.display = 'none';
+  }
+
+  // 监听游戏结束事件，自动更新状态
+  var checkInterval = setInterval(function(){
+    var s = A.getGameState();
+    if(s === A.STATE.GAMEOVER){
+      A.setStatus('游戏失败 — 按空格或点击重新开始', 'error');
+    }else if(s === A.STATE.WIN){
+      A.setStatus('🎉 胜利！ — 按空格或点击重新开始', 'success');
+    }
+  }, 500);
+
+})();
+</script>
+</body>
+</html>

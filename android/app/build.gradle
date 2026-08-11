@@ -1,0 +1,217 @@
+plugins {
+    id 'com.android.application'
+}
+
+def webRoot = rootProject.projectDir.parentFile
+def generatedWebAssets = layout.buildDirectory.dir('generated/webAssets')
+def requiredWebFiles = [
+    'index.html',
+    'AI-ENGINE启动.html',
+    'main.js'
+]
+def synchronizedRootFiles = [
+    'index.html',
+    'AI-ENGINE启动.html',
+    'game.html',
+    'update-announcement.html',
+    'styles.css',
+    'main.js'
+]
+def synchronizedDirectories = [
+    'ai',
+    'assets',
+    'core',
+    'fitness',
+    'plugins'
+]
+
+tasks.register('validateWebSources') {
+    inputs.files(requiredWebFiles.collect { new File(webRoot, it) })
+    doLast {
+        def missing = requiredWebFiles.findAll { !new File(webRoot, it).isFile() }
+        if (!missing.isEmpty()) {
+            throw new GradleException('Missing required web sources: ' + missing.join(', '))
+        }
+    }
+}
+
+tasks.register('syncWebAssets', Sync) {
+    dependsOn tasks.named('validateWebSources')
+    from(webRoot) {
+        synchronizedRootFiles.each { include it }
+        synchronizedDirectories.each { include it + '/**' }
+        exclude '**/__pycache__/**'
+        exclude '**/*.pyc'
+    }
+    into(generatedWebAssets.map { it.dir('web') })
+}
+
+tasks.register('verifyWebAssetSync') {
+    dependsOn tasks.named('syncWebAssets')
+    doLast {
+        def destinationRoot = new File(generatedWebAssets.get().asFile, 'web')
+
+        synchronizedRootFiles.each { relativePath ->
+            def source = new File(webRoot, relativePath)
+            def packaged = new File(destinationRoot, relativePath)
+            if (!source.isFile() || !packaged.isFile()) {
+                throw new GradleException('Missing synchronized file: ' + relativePath)
+            }
+            if (!java.util.Arrays.equals(source.bytes, packaged.bytes)) {
+                throw new GradleException('Synchronized file is stale: ' + relativePath)
+            }
+        }
+
+        synchronizedDirectories.each { relativePath ->
+            def sourceDirectory = new File(webRoot, relativePath)
+            def packagedDirectory = new File(destinationRoot, relativePath)
+            if (!packagedDirectory.isDirectory()) {
+                throw new GradleException('Missing synchronized directory: ' + relativePath)
+            }
+            def sourceFiles = fileTree(sourceDirectory) {
+                exclude '**/__pycache__/**'
+                exclude '**/*.pyc'
+            }.files.collect { sourceDirectory.toPath().relativize(it.toPath()).toString().replace('\\', '/') }.sort()
+            def packagedFiles = fileTree(packagedDirectory).files.collect {
+                packagedDirectory.toPath().relativize(it.toPath()).toString().replace('\\', '/')
+            }.sort()
+            if (sourceFiles != packagedFiles) {
+                throw new GradleException('Synchronized directory contents differ: ' + relativePath)
+            }
+            sourceFiles.each { nestedPath ->
+                def source = new File(sourceDirectory, nestedPath)
+                def packaged = new File(packagedDirectory, nestedPath)
+                if (!java.util.Arrays.equals(source.bytes, packaged.bytes)) {
+                    throw new GradleException('Synchronized file is stale: ' + relativePath + '/' + nestedPath)
+                }
+            }
+        }
+
+        ['android', 'docs', 'server', 'tests'].each { excludedPath ->
+            if (new File(destinationRoot, excludedPath).exists()) {
+                throw new GradleException('Excluded path was packaged: ' + excludedPath)
+            }
+        }
+    }
+}
+
+tasks.register('verifyNoEmbeddedCredentials') {
+    dependsOn tasks.named('syncWebAssets')
+    doLast {
+        def destinationRoot = new File(generatedWebAssets.get().asFile, 'web')
+        def credentialPattern = ~/(?i)\bsk-[A-Za-z0-9_-]{12,}/
+        fileTree(destinationRoot).files.each { candidate ->
+            def searchable = new String(candidate.bytes, 'ISO-8859-1')
+            if (credentialPattern.matcher(searchable).find()) {
+                def relative = destinationRoot.toPath().relativize(candidate.toPath())
+                throw new GradleException('Credential-shaped value found in packaged asset: ' + relative)
+            }
+        }
+    }
+}
+
+tasks.register('verifyRuntimeAPIKeyContract') {
+    def generatorSource = new File(webRoot, 'ai/generator/AIGenerator.js')
+    doLast {
+        def sourceText = generatorSource.getText('UTF-8')
+        [
+            'age.deepseek_api_key',
+            'window.prompt',
+            "error.code='missing_api_key'",
+            'if(error.status===401)clearStoredAPIKey();',
+            'localStorage.removeItem'
+        ].each { requiredText ->
+            if (!sourceText.contains(requiredText)) {
+                throw new GradleException('Runtime API key contract is missing: ' + requiredText)
+            }
+        }
+    }
+}
+
+tasks.register('verifyBackupPolicyContract') {
+    def manifestFile = file('src/main/AndroidManifest.xml')
+    def legacyRulesFile = file('src/main/res/xml/backup_rules.xml')
+    def dataExtractionRulesFile = file('src/main/res/xml/data_extraction_rules.xml')
+    doLast {
+        def manifestText = manifestFile.getText('UTF-8')
+        [
+            'android:allowBackup="false"',
+            'android:fullBackupContent="@xml/backup_rules"',
+            'android:dataExtractionRules="@xml/data_extraction_rules"',
+            'tools:targetApi="s"'
+        ].each { requiredText ->
+            if (!manifestText.contains(requiredText)) {
+                throw new GradleException('Backup policy contract is missing: ' + requiredText)
+            }
+        }
+        [legacyRulesFile, dataExtractionRulesFile].each { rulesFile ->
+            if (!rulesFile.isFile() || !rulesFile.getText('UTF-8').contains('<exclude domain="root" path="."')) {
+                throw new GradleException('Backup exclusion rules are missing: ' + rulesFile.name)
+            }
+        }
+    }
+}
+
+android {
+    namespace 'com.aigameengine.app'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId 'com.aigameengine.app'
+        minSdk 26
+        targetSdk 33
+        versionCode 1
+        versionName '1.0-debug'
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+    }
+
+    sourceSets {
+        main {
+            assets.srcDir(generatedWebAssets)
+        }
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('verifyNoEmbeddedCredentials')
+}
+
+tasks.register('verifyMainActivityContract') {
+    def activitySource = file('src/main/java/com/aigameengine/app/MainActivity.java')
+    doLast {
+        if (!activitySource.isFile()) {
+            throw new GradleException('MainActivity.java is missing')
+        }
+        def sourceText = activitySource.getText('UTF-8')
+        [
+            'APP_ASSET_PREFIX + "index.html"',
+            'setJavaScriptEnabled(true)',
+            'setDomStorageEnabled(true)',
+            'onReceivedError',
+            'canGoBack()',
+            'file:///android_asset/web/',
+            'startsWith(APP_ASSET_PREFIX)',
+            'webView.onPause()',
+            'webView.pauseTimers()',
+            'webView.onResume()',
+            'webView.resumeTimers()'
+        ].each { requiredText ->
+            if (!sourceText.contains(requiredText)) {
+                throw new GradleException('MainActivity contract is missing: ' + requiredText)
+            }
+        }
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn tasks.named('verifyWebAssetSync')
+    dependsOn tasks.named('verifyNoEmbeddedCredentials')
+    dependsOn tasks.named('verifyRuntimeAPIKeyContract')
+    dependsOn tasks.named('verifyBackupPolicyContract')
+    dependsOn tasks.named('verifyMainActivityContract')
+}

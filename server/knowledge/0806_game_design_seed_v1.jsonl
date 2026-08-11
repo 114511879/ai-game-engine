@@ -1,0 +1,19 @@
+{"id":"mechanic_souls_combat","title":"魂系战斗核心","content":"魂系战斗（souls_like）依赖高风险承诺动作、耐力管理、闪避无敌帧、敌人招式观察和精确反击。高难度不是单纯提高伤害，而是让失败原因可读、学习可以积累。","metadata":{"type":"combat","genre":"soulslike","difficulty":"hard","source":"curated"}}
+{"id":"mechanic_boss_pattern","title":"Boss招式学习","content":"Boss pattern learning 将攻击拆成清晰前摇、命中阶段和恢复阶段。每个阶段逐步增加组合而不是随机提速。玩家通过死亡观察规律，最终形成稳定应对策略。","metadata":{"type":"boss","genre":"action_rpg","source":"curated"}}
+{"id":"mechanic_death_recovery","title":"死亡惩罚与资源取回","content":"death_penalty 和 death recovery 可以让玩家死亡后掉落部分成长资源，并在返回死亡地点时取回。惩罚要制造紧张感，但不应删除关键装备或永久阻断流程。","metadata":{"type":"progression","genre":"soulslike","source":"curated"}}
+{"id":"mechanic_stamina","title":"耐力系统","content":"stamina system 统一约束攻击、闪避和防御。耐力耗尽时玩家失去主动权，因此需要在进攻和保留退路之间选择。恢复速度应支持短暂停顿后的再次交锋。","metadata":{"type":"combat","genre":"action_rpg","source":"curated"}}
+{"id":"mechanic_element_magic","title":"元素法术系统","content":"魔法与 element_system 可以由火焰、冰霜、雷电等元素组成。元素应有明确战术身份：火焰持续伤害，冰霜控制，雷电爆发。法力、冷却和施法前摇共同限制强度。","metadata":{"type":"magic","genre":"rpg","source":"curated"}}
+{"id":"mechanic_skill_tree","title":"技能树设计","content":"skill_tree 应围绕不同构筑路线提供互斥或协同选择，例如近战强化、元素法术、召唤和生存。关键节点改变玩法，小节点只做数值补充。","metadata":{"type":"progression","genre":"rpg","source":"curated"}}
+{"id":"design_open_world","title":"开放世界探索结构","content":"open_world 的核心不是地图尺寸，而是非线性目标、远景引导、探索奖励和区域差异。兴趣点之间需要形成可见线索，避免玩家只沿着任务标记移动。","metadata":{"type":"world","genre":"open_world","source":"curated"}}
+{"id":"design_hidden_areas","title":"隐藏区域与秘密地牢","content":"hidden_areas 和 hidden_dungeons 通过环境异常、可疑墙面、支路地标和奖励预告引导发现。隐藏内容应提供独特机制、装备或叙事，而不是只放普通资源。","metadata":{"type":"world","genre":"exploration","source":"curated"}}
+{"id":"design_nonlinear_map","title":"非线性地图与捷径","content":"nonlinear map 使用环形路线、门锁、垂直连接和可开启捷径建立空间记忆。玩家探索后打开回到安全点的短路，会产生明确的进度感。","metadata":{"type":"map","genre":"dungeon","source":"curated"}}
+{"id":"design_action_rpg_mix","title":"魂系魔法开放区域组合","content":"souls_like、magic 和 open_world 可以组合为区域式动作RPG：战斗保留耐力与Boss学习，成长加入元素法术，地图改为多个相连开放区域与隐藏房间。每个区域用一个主要Boss和数个秘密目标收束。","metadata":{"type":"composition","genre":"action_rpg","source":"curated"}}
+{"id":"adapt_2d_open_zone","title":"2D引擎适配开放世界","content":"Canvas 2D 引擎无法直接实现无缝3D开放世界，但可以使用 open_zone 分区地图、房间图、双向出口、区域事件和隐藏房间表达非线性探索。应明确这是范围降级，不是假装实现完整3D。","metadata":{"type":"constraint","engine":"canvas2d","source":"engine"}}
+{"id":"engine_capability_boss","title":"当前引擎Boss能力","content":"当前引擎支持 dungeon Boss、多阶段 phase、投射物、召唤、范围攻击、护盾、技能冷却和自动试玩。适合实现Boss学习机制的2D原型。","metadata":{"type":"capability","engine":"ai_game_engine","source":"engine"}}
+{"id":"engine_capability_rpg","title":"当前引擎RPG能力","content":"当前 RPG 插件支持战斗、经验、等级、金币、装备强化、药水和任务击杀目标。适合验证成长节奏，不支持大型3D角色动画和复杂物品数据库。","metadata":{"type":"capability","game_type":"rpg","source":"engine"}}
+{"id":"engine_capability_maps","title":"当前引擎地图能力","content":"当前引擎支持关卡、房间类型、分区地图、平台、隐藏区域概念和程序化排列。可以构建2D开放区域，但不支持真正无缝3D地形流送。","metadata":{"type":"capability","game_type":"dungeon","source":"engine"}}
+{"id":"design_magic_boss","title":"法术与Boss机制组合","content":"魔法Boss战应让元素系统参与解题：冰霜打断冲锋，火焰清理召唤物，雷电惩罚护盾阶段。每种法术都需要清晰反馈，避免只换颜色和伤害数字。","metadata":{"type":"composition","genre":"boss_magic","source":"curated"}}
+{"id":"design_tower_defense","title":"塔防路线与波次","content":"tower_defense 需要路线信息、塔位取舍、敌人波次和升级节奏。单线路径适合教学，多路防守强调资源分配，迷宫型需要限制堵路规则。","metadata":{"type":"mechanic","genre":"tower_defense","source":"curated"}}
+{"id":"design_card_combat","title":"卡牌战斗资源循环","content":"card combat 使用抽牌、能量、手牌和敌方意图形成回合决策。构筑系统要控制抽牌稳定性，让攻击、防御和成长牌产生可识别的组合。","metadata":{"type":"mechanic","genre":"card","source":"curated"}}
+{"id":"design_simulation_loop","title":"模拟经营反馈循环","content":"simulation 的核心循环是投入资源、等待产出、处理瓶颈和扩大规模。人口、食物、金币、容量与幸福度必须互相约束，并用短周期反馈解释变化原因。","metadata":{"type":"mechanic","genre":"simulation","source":"curated"}}
+{"id":"design_racing_flow","title":"竞速风险与速度感","content":"racing 通过加速、路线选择、障碍预判和时间压力制造速度感。碰撞应该损失速度而不是立即失败，让玩家有追回比赛的空间。","metadata":{"type":"mechanic","genre":"racing","source":"curated"}}

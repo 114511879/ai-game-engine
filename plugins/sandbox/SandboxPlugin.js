@@ -1,0 +1,14 @@
+/** SandboxPlugin.js - place, remove and switch materials */
+(function(){var A=window.AGE,T=A.PluginTools;
+var MATERIALS=[{name:'石块',color:'#88919a'},{name:'木材',color:'#b77a45'},{name:'水晶',color:'#54c8c0'}];
+A.SandboxPlugin={name:'sandbox',label:'沙盒建造',ownsLoop:true,
+preset:{meta:{game_type:'sandbox',title:'方块工坊'},player:{hp:10},rules:{win_condition:'build_goal',win_value:12},world:{theme:'workshop'},sandbox:{width:16,height:8,target_blocks:12}},
+onLoad:function(e,d){var c=d.sandbox||{},w=c.width||16,h=c.height||8,grid=[];for(var y=0;y<h;y++){grid[y]=[];for(var x=0;x<w;x++)grid[y][x]=y===h-1?0:null;}e._noDefaultSpawn=true;e.sandbox={w:w,h:h,grid:grid,cursorX:Math.floor(w/2),cursorY:h-2,material:0,placed:0,target:c.target_blocks||12};},
+_place:function(e){var s=e.sandbox;if(s.grid[s.cursorY][s.cursorX]===null){s.grid[s.cursorY][s.cursorX]=s.material;s.placed++;e.score+=5;}},
+_remove:function(e){var s=e.sandbox;if(s.grid[s.cursorY][s.cursorX]!==null&&s.cursorY!==s.h-1){s.grid[s.cursorY][s.cursorX]=null;s.placed=Math.max(0,s.placed-1);}},
+_finish:function(e){if(e.sandbox.placed>=e.sandbox.target)T.win(e,'作品建造完成');else if(A.setStatus)A.setStatus('还需要 '+(e.sandbox.target-e.sandbox.placed)+' 个方块','error');},
+onUpdate:function(){},onAllKeys:function(e,k){var s=e.sandbox;if(k==='arrowleft'||k==='a')s.cursorX=T.clamp(s.cursorX-1,0,s.w-1);else if(k==='arrowright'||k==='d')s.cursorX=T.clamp(s.cursorX+1,0,s.w-1);else if(k==='arrowup'||k==='w')s.cursorY=T.clamp(s.cursorY-1,0,s.h-2);else if(k==='arrowdown'||k==='s')s.cursorY=T.clamp(s.cursorY+1,0,s.h-2);else if(k===' ')this._place(e);else if(k==='x'||k==='backspace')this._remove(e);else if(k==='enter')this._finish(e);else{var n=parseInt(k,10);if(n>=1&&n<=3)s.material=n-1;}},onPluginKey:function(){},
+aiStep:function(e){var s=e.sandbox;if(s.placed>=s.target){this._finish(e);return;}this._place(e);s.cursorX++;if(s.cursorX>=s.w){s.cursorX=0;s.cursorY=Math.max(0,s.cursorY-1);}s.material=(s.material+1)%MATERIALS.length;},
+onRender:function(e){var c=e.renderer.ctx,s=e.sandbox;T.background(c,'#18252d','方块工坊','放置 '+s.target+' 个方块后按 Enter 完成');var cell=34,ox=(800-s.w*cell)/2,oy=72;for(var y=0;y<s.h;y++)for(var x=0;x<s.w;x++){var px=ox+x*cell,py=oy+y*cell,val=s.grid[y][x];c.fillStyle=val===null?'rgba(255,255,255,.035)':MATERIALS[val].color;c.fillRect(px+1,py+1,cell-2,cell-2);c.strokeStyle='rgba(255,255,255,.08)';c.strokeRect(px+.5,py+.5,cell-1,cell-1);}c.strokeStyle='#ffe169';c.lineWidth=3;c.strokeRect(ox+s.cursorX*cell+1.5,oy+s.cursorY*cell+1.5,cell-3,cell-3);T.text(c,'材料 '+MATERIALS[s.material].name+' · 进度 '+s.placed+'/'+s.target,400,365,'#fff',13,'center');T.text(c,'方向键移动 · 空格放置 · X拆除 · 1-3换材料 · Enter完成',400,388,'rgba(255,255,255,.68)',11,'center');},
+getStatsText:function(e){return' 方块:'+e.sandbox.placed+'/'+e.sandbox.target;},getHint:function(){return'方向键=移动 空格=放置 X=拆除 1-3=材料 Enter=完成';}};
+})();

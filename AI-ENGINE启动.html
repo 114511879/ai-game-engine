@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>AI-ENGINE 启动</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ============ 侧边栏 ============ -->
+<aside id="sidebar">
+  <div class="sidebar-header">
+    <div class="brand">
+      <div class="brand-icon">🎮</div>
+      <span class="brand-name">AI 游戏引擎</span>
+    </div>
+  </div>
+  <button class="btn-new-chat" id="btnNewChat" title="Ctrl Shift K">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+    <span>新对话</span>
+    <kbd>Ctrl Shift K</kbd>
+  </button>
+  <div class="sidebar-section">
+    <div class="sidebar-label">历史对话</div>
+    <div class="history-list" id="historyList">
+      <div class="history-empty">暂无对话记录</div>
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <button class="sidebar-footer-btn sidebar-memory-btn" id="btnMemory">偏好记忆 · 0</button>
+    <button class="sidebar-footer-btn" id="btnClearAll">清空聊天记录</button>
+  </div>
+</aside>
+
+<dialog id="memoryDialog" class="memory-dialog">
+  <div class="memory-dialog-header">
+    <div>
+      <h2>玩家偏好记忆</h2>
+      <p>只记录你确认过的游戏设计</p>
+    </div>
+    <button id="btnMemoryClose" class="memory-close" title="关闭" aria-label="关闭">×</button>
+  </div>
+  <div id="memoryList" class="memory-list"></div>
+  <div class="memory-dialog-actions">
+    <button id="btnMemoryClear" class="memory-clear">清空偏好记忆</button>
+  </div>
+</dialog>
+
+<!-- ============ 主区域 ============ -->
+<main id="main">
+  <header class="topbar">
+    <div class="topbar-title">
+      <span id="convTitle">新对话</span>
+    </div>
+  </header>
+
+  <!-- 聊天区域 -->
+  <div class="chat-area" id="chatArea">
+    <!-- 空状态：欢迎页 -->
+    <div class="welcome" id="welcomePage">
+      <h1 class="hero-text">有什么我能帮你创建的游戏吗？</h1>
+      <div class="suggestion-chips">
+        <button class="chip" data-prompt="生成一个3关暗黑地牢亡灵Boss">👑 3关暗黑地牢Boss战</button>
+        <button class="chip" data-prompt="制作一个快节奏魔法跑酷游戏">🏃 快节奏魔法跑酷</button>
+        <button class="chip" data-prompt="三国文字冒险">📖 三国文字冒险</button>
+        <button class="chip" data-prompt="制作一个射击弹幕游戏">🔫 射击弹幕游戏</button>
+        <button class="chip" data-prompt="生成一个平台跳跃收集游戏">📦 平台跳跃收集</button>
+        <button class="chip" data-prompt="生成一个暗黑亡灵地牢，Boss有三阶段，玩家可用火球和护盾">💀 暗黑亡灵三阶段Boss</button>
+      </div>
+    </div>
+    <section id="consultantPanel" class="consultant-panel" style="display:none" aria-live="polite">
+      <div class="consultant-header">
+        <span class="consultant-title">AI 游戏顾问</span>
+        <span class="consultant-status" id="consultantStatus">需求澄清</span>
+      </div>
+      <div class="consultant-question" id="consultantQuestion"></div>
+      <div class="consultant-options" id="consultantOptions"></div>
+      <div class="consultant-memory" id="consultantMemory" style="display:none">
+        <span id="consultantMemoryText"></span>
+        <button id="btnApplyMemory">应用偏好</button>
+      </div>
+      <div class="consultant-intent" id="consultantIntent"></div>
+      <div class="consultant-actions">
+        <button class="consultant-skip" id="btnConsultantSkip">直接生成</button>
+        <button class="consultant-confirm" id="btnConsultantConfirm" disabled>确认并生成</button>
+      </div>
+    </section>
+    <section id="researchPanel" class="research-panel" style="display:none" aria-live="polite">
+      <div class="research-header"><span>游戏设计检索</span><span id="researchStatus">准备中</span></div>
+      <div id="researchWebStatus" class="research-web-status"></div>
+      <div id="researchQueries" class="research-queries"></div>
+      <div id="researchDocuments" class="research-documents"></div>
+      <div id="researchLimits" class="research-limits"></div>
+    </section>
+    <!-- 消息列表动态插入 -->
+    <div class="messages" id="messages"></div>
+  </div>
+
+  <!-- 底部输入区 -->
+  <div class="input-bar">
+    <div class="input-container">
+      <div class="input-tools-left">
+        <label class="preset-label" for="presetSelect">预设</label>
+        <select id="presetSelect" class="preset-select" aria-label="选择游戏预设">
+          <option value="">选择类型</option>
+          <option value="runner">跑酷</option><option value="shooter">射击</option><option value="platform">平台</option><option value="dungeon">地牢</option><option value="story">文字冒险</option>
+          <option value="rpg">RPG</option><option value="strategy">策略</option><option value="tower_defense">塔防</option><option value="card">卡牌</option><option value="simulation">模拟经营</option><option value="sandbox">沙盒</option><option value="racing">竞速</option>
+        </select>
+      </div>
+      <textarea id="prompt" class="chat-input" placeholder="描述你想玩的游戏..." rows="1"></textarea>
+      <div class="input-tools-right">
+        <button class="tool-btn tool-director" id="btnDirector" title="AI导演：自动分析→生成→测试→优化">
+          🧠 <span class="tool-label">导演</span>
+        </button>
+        <button class="tool-btn tool-test" id="btnGenTest" title="生成+测试：3轮自动优化">
+          🔬 <span class="tool-label">测试</span>
+        </button>
+        <button class="btn-submit" id="btnSubmit" title="提交给 AI 游戏顾问">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="input-hint" id="inputHint">按 Enter 发送 · Shift+Enter 换行 · 确认游戏意图后开始生成</div>
+  </div>
+
+  <!-- 隐藏的游戏画布（供导演/测试模式使用） -->
+  <canvas id="game" width="800" height="400" style="display:none"></canvas>
+  <div id="chargeBar" style="display:none"><div id="chargeFill"></div></div>
+
+  <!-- AI测试面板（测试时显示） -->
+  <div id="testPanel" class="test-panel" style="display:none">
+    <div class="test-panel-header">
+      <span class="test-panel-label">🔬 AI测试进行中</span>
+      <span class="test-panel-round" id="tpRound">轮次 1/3</span>
+    </div>
+    <div class="test-panel-progress">
+      <div class="test-panel-bar" id="tpProgressBar" style="width:0%"></div>
+    </div>
+    <div class="test-panel-grid">
+      <div class="test-panel-stat">
+        <span class="tp-stat-label">状态</span>
+        <span class="tp-stat-value" id="tpStatus">初始化...</span>
+      </div>
+      <div class="test-panel-stat">
+        <span class="tp-stat-label">Agent模式</span>
+        <span class="tp-stat-value" id="tpAgentMode">explore</span>
+      </div>
+      <div class="test-panel-stat">
+        <span class="tp-stat-label">发现异常</span>
+        <span class="tp-stat-value" id="tpAnomalies">0</span>
+      </div>
+      <div class="test-panel-stat">
+        <span class="tp-stat-label">发现Bug</span>
+        <span class="tp-stat-value" id="tpBugs">0</span>
+      </div>
+    </div>
+    <!-- 画布预览区域 -->
+    <div id="testCanvasArea" class="test-canvas-area"></div>
+  </div>
+</main>
+
+<!-- ============ 脚本 ============ -->
+<script src="core/dsl/Config.js"></script>
+<script src="core/engine/GameStandard.js"></script>
+<script src="core/engine/GameState.js"></script>
+<script src="core/runtime/helpers.js"></script>
+<script src="core/runtime/Collision.js"></script>
+<script src="core/runtime/Enemy.js"></script>
+<script src="core/runtime/Powerup.js"></script>
+<script src="core/runtime/Particle.js"></script>
+<script src="core/runtime/Player.js"></script>
+<script src="core/runtime/Physics.js"></script>
+<script src="core/runtime/Spawner.js"></script>
+<script src="core/runtime/Input.js"></script>
+<script src="core/runtime/Renderer.js"></script>
+<script src="core/dsl/Rules.js"></script>
+<script src="core/dsl/PhaseManager.js"></script>
+<script src="core/dsl/SkillEngine.js"></script>
+<script src="core/dsl/LevelManager.js"></script>
+<script src="core/dsl/MapSystem.js"></script>
+<script src="core/dsl/AssetSystem.js"></script>
+<script src="core/dsl/BossSystem.js"></script>
+<script src="core/dsl/SkillSystem.js?v=4"></script>
+<script src="core/dsl/DSLBinder.js?v=6"></script>
+<script src="core/dsl/PluginSelector.js"></script>
+<script src="ai/tester/PlayTestSystem.js"></script>
+<script src="ai/tester/BugDetector.js"></script>
+<script src="ai/tester/agent.js"></script>
+<script src="ai/tester/observer.js"></script>
+<script src="ai/tester/anomaly.js"></script>
+<script src="ai/tester/debugger.js"></script>
+<script src="ai/tester/fixer.js"></script>
+<script src="ai/tester/trainer.js"></script>
+<script src="plugins/runner/RunnerPlugin.js"></script>
+<script src="plugins/shooter/ShooterPlugin.js"></script>
+<script src="plugins/rpg/PlatformPlugin.js"></script>
+<script src="plugins/rpg/DungeonPlugin.js?v=2"></script>
+<script src="plugins/common/PluginTools.js"></script>
+<script src="plugins/rpg/RPGPlugin.js"></script>
+<script src="plugins/strategy/StrategyPlugin.js"></script>
+<script src="plugins/tower_defense/TowerDefensePlugin.js"></script>
+<script src="plugins/card/CardPlugin.js"></script>
+<script src="plugins/simulation/SimulationPlugin.js"></script>
+<script src="plugins/sandbox/SandboxPlugin.js"></script>
+<script src="plugins/racing/RacingPlugin.js"></script>
+<script src="ai/generator/AIGenerator.js"></script>
+<script src="fitness/types.js"></script>
+<script src="fitness/WeightProfile.js"></script>
+<script src="fitness/MetricsNormalizer.js"></script>
+<script src="fitness/PenaltyCalculator.js"></script>
+<script src="fitness/FitnessCalculator.js"></script>
+<script src="ai/protocols/AgentProtocols.js"></script>
+<script src="ai/intent/IntentParserAgent.js"></script>
+<script src="ai/consultant/PlayerMemory.js"></script>
+<script src="ai/consultant/GameConsultant.js"></script>
+<script src="ai/research/RAGClient.js"></script>
+<script src="ai/research/ContextRouter.js"></script>
+<script src="ai/agents/BaseAgent.js"></script>
+<script src="ai/agents/DesignerAgent.js"></script>
+<script src="ai/agents/LevelAgent.js"></script>
+<script src="ai/agents/CombatAgent.js"></script>
+<script src="ai/agents/StoryAgent.js"></script>
+<script src="ai/agents/EconomyAgent.js"></script>
+<script src="ai/agents/AssetAgent.js"></script>
+<script src="ai/agents/AgentRegistry.js"></script>
+<script src="ai/quality/PreQAValidator.js"></script>
+<script src="ai/quality/ConstraintEngine.js"></script>
+<script src="ai/quality/FinalQA.js"></script>
+<script src="ai/evaluation/BlueprintMetadata.js"></script>
+<script src="ai/director/DirectorAgent.js"></script>
+<script src="ai/simulation/SimulationMemory.js"></script>
+<script src="ai/simulation/SimulationAgent.js"></script>
+<script src="ai/director/GameDirector.js"></script>
+<script src="core/engine/Engine.js"></script>
+<script src="plugins/story/StoryPlugin.js?v=14"></script>
+<script src="main.js"></script>
+</body>
+</html>
