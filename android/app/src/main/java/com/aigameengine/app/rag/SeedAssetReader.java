@@ -193,7 +193,7 @@ public final class SeedAssetReader {
         public final int seedVersion;
         public final String embeddingVersion;
 
-        private SeedBundle(List<RagDocument> documents, int seedVersion, String embeddingVersion) {
+        SeedBundle(List<RagDocument> documents, int seedVersion, String embeddingVersion) {
             this.documents = Collections.unmodifiableList(new ArrayList<>(documents));
             this.seedVersion = seedVersion;
             this.embeddingVersion = embeddingVersion;

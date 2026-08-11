@@ -120,6 +120,10 @@ public final class RagDatabase extends SQLiteOpenHelper {
                 RagDocument.STATE_READY, embeddingVersion}, "id ASC");
     }
 
+    public List<RagDocument> listAll() {
+        return query(null, null, "id ASC");
+    }
+
     public void trimUserExamples(int maximum) {
         if (maximum < 0) {
             throw new IllegalArgumentException("maximum must not be negative");
@@ -138,6 +142,13 @@ public final class RagDatabase extends SQLiteOpenHelper {
     public int countByOrigin(String origin) {
         try (Cursor cursor = getReadableDatabase().rawQuery(
                 "SELECT COUNT(*) FROM documents WHERE origin=?", new String[] {origin})) {
+            cursor.moveToFirst();
+            return cursor.getInt(0);
+        }
+    }
+
+    public int countAll() {
+        try (Cursor cursor = getReadableDatabase().rawQuery("SELECT COUNT(*) FROM documents", null)) {
             cursor.moveToFirst();
             return cursor.getInt(0);
         }
