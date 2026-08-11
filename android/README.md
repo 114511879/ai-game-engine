@@ -20,6 +20,23 @@ Every build validates and copies the current web source from the repository root
 
 An APK already installed on a phone does not change automatically. Install the newly built APK over the existing app to update it.
 
+## Offline RAG
+
+The Android APK packages an INT8 `BAAI/bge-small-zh-v1.5` model, its tokenizer, and the curated game-design seed knowledge. Retrieval runs entirely on the device and does not connect to `127.0.0.1` or require network access. DeepSeek consultation and game generation remain separate network features and still require a user-provided API key.
+
+The first retrieval copies the verified ONNX model into private no-backup storage and initializes the local SQLite index. Successful game examples saved by the user are embedded on the device and remain available after process restarts, device restarts, and replacement installs. The newest 1,000 user examples are retained. Android removes this private data when the application is uninstalled.
+
+Release builds support Android API 26 or later on `arm64-v8a` and `armeabi-v7a`. Debug builds also package x86 variants for emulator tests. The APK must remain below 180 MB; allow up to 300 MB of free space for installation, extracted native libraries, the model, and an empty index.
+
+The locked model preparation environment is CPython 3.12 on Windows AMD64. Rebuild the model assets from the repository root with:
+
+```powershell
+$ragExportPackages = 'E:\111\ai-game-engine-rag\export-packages'
+& 'C:\Users\administered0\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m pip install --target $ragExportPackages -r android\tools\offline_rag_requirements.txt
+$env:PYTHONPATH = $ragExportPackages
+& 'C:\Users\administered0\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' android\tools\prepare_offline_rag.py --model-cache 'E:\111\ai-game-engine-rag\models' --seed 'server\knowledge\0806_game_design_seed_v1.jsonl' --output 'android\app\src\main\ragAssets\rag'
+```
+
 ## DeepSeek API Key
 
 The APK does not contain a DeepSeek API key. The first AI request prompts for a key and stores it only in the WebView data on that device. Cancelling the prompt sends no request. An HTTP 401 response clears the stored value so the next request prompts again.
@@ -35,4 +52,4 @@ $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALA
 & (Join-Path $sdk 'platform-tools\adb.exe') install -r 'android\app\build\outputs\apk\debug\app-debug.apk'
 ```
 
-The packaged web app can use HTTPS APIs when the device has network access. The Android wrapper blocks cleartext traffic, so the existing HTTP RAG URL uses the web application's offline fallback on Android.
+The packaged web app can use HTTPS APIs when the device has network access. The Android wrapper blocks cleartext traffic. Android RAG uses the native on-device bridge, while desktop/browser development continues to use the HTTP service documented in the project README.
