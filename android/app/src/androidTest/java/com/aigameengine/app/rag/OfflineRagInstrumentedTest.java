@@ -4,9 +4,18 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.os.SystemClock;
+import android.view.ViewGroup;
+import android.webkit.WebView;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import com.aigameengine.app.MainActivity;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
@@ -14,6 +23,29 @@ import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public final class OfflineRagInstrumentedTest {
+    @Test(timeout = 180000)
+    public void packagedWebViewCallsNativeSemanticBridge() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        Intent intent = new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Activity activity = InstrumentationRegistry.getInstrumentation().startActivitySync(intent);
+        try {
+            ViewGroup content = activity.findViewById(android.R.id.content);
+            WebView webView = (WebView) content.getChildAt(0);
+            waitForJavaScript(webView, "typeof window.AGE==='object'&&typeof AGE.RAGClient==='object'?'ready':''", "ready");
+            evaluate(webView,
+                    "window.__offlineRagResult='';"
+                            + "AGE.RAGClient.retrieve('暗黑地牢亡灵 Boss',{}).then(function(value){"
+                            + "window.__offlineRagResult=JSON.stringify(value);});");
+            String payload = waitForNonEmptyJavaScript(webView, "window.__offlineRagResult");
+            JSONObject result = new JSONObject(payload);
+            assertTrue(result.getBoolean("available"));
+            assertEquals("native_semantic", result.getString("runtime_mode"));
+            assertTrue(result.getJSONArray("documents").length() > 0);
+        } finally {
+            activity.runOnUiThread(activity::finish);
+        }
+    }
+
     @Test(timeout = 180000)
     public void replacementInstallCheckpointPersists() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
@@ -98,5 +130,45 @@ public final class OfflineRagInstrumentedTest {
             }
         }
         return false;
+    }
+
+    private static void waitForJavaScript(WebView webView, String expression, String expected)
+            throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + 30000;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (expected.equals(evaluate(webView, expression))) {
+                return;
+            }
+            SystemClock.sleep(100);
+        }
+        throw new AssertionError("Timed out waiting for packaged WebView JavaScript");
+    }
+
+    private static String waitForNonEmptyJavaScript(WebView webView, String expression)
+            throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + 120000;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            String value = evaluate(webView, expression);
+            if (value != null && !value.isEmpty() && !"null".equals(value)) {
+                return value;
+            }
+            SystemClock.sleep(100);
+        }
+        throw new AssertionError("Timed out waiting for native RAG JavaScript result");
+    }
+
+    private static String evaluate(WebView webView, String script) throws Exception {
+        AtomicReference<String> result = new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(1);
+        webView.post(() -> webView.evaluateJavascript(script, value -> {
+            result.set(value);
+            latch.countDown();
+        }));
+        assertTrue("JavaScript evaluation timed out", latch.await(10, TimeUnit.SECONDS));
+        String encoded = result.get();
+        if (encoded == null || "null".equals(encoded)) {
+            return null;
+        }
+        return new JSONArray("[" + encoded + "]").getString(0);
     }
 }
