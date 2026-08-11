@@ -58,10 +58,9 @@ public final class OnnxEmbeddingModel implements EmbeddingModel {
         String modelHash = manifest.getJSONObject("artifacts").getString("model.onnx");
         String queryPrefix = manifest.getString("query_prefix");
         BgeTokenizer tokenizer = BgeTokenizer.fromAsset(assets, MODEL_ROOT + "vocab.txt", maxTokens);
-        File modelFile = materializeModel(context, assets, modelHash);
         return new OnnxEmbeddingModel(
                 tokenizer,
-                () -> new OrtBackend(modelFile),
+                () -> new OrtBackend(materializeModel(context, assets, modelHash)),
                 revision + ":" + modelHash,
                 dimension,
                 queryPrefix);

@@ -322,10 +322,23 @@ tasks.register('verifyMainActivityContract') {
             'webView.onPause()',
             'webView.pauseTimers()',
             'webView.onResume()',
-            'webView.resumeTimers()'
+            'webView.resumeTimers()',
+            'addJavascriptInterface',
+            '"AndroidRag"',
+            'LocalRagEngine.create(this)',
+            'ragBridge.close()',
+            'removeJavascriptInterface("AndroidRag")'
         ].each { requiredText ->
             if (!sourceText.contains(requiredText)) {
                 throw new GradleException('MainActivity contract is missing: ' + requiredText)
+            }
+        }
+        ['AI-ENGINE启动.html', 'game.html'].each { pageName ->
+            def pageText = new File(webRoot, pageName).getText('UTF-8')
+            ["frame-src 'none'", "object-src 'none'", 'https://api.deepseek.com'].each { requiredText ->
+                if (!pageText.contains(requiredText)) {
+                    throw new GradleException('Content Security Policy is missing from ' + pageName + ': ' + requiredText)
+                }
             }
         }
     }

@@ -440,7 +440,7 @@ var ChatUI = {
     var panel=document.getElementById('researchPanel');
     if(panel)panel.style.display='block';
     var status=document.getElementById('researchStatus');
-    if(status)status.textContent='正在检查本地知识，必要时联网...';
+    if(status)status.textContent=(window.AndroidRag?'正在初始化本机知识库...':'正在检查本地知识，必要时联网...');
     try{
       var result=await A.RAGClient.retrieve(ChatUI.pendingPrompt,intent);
       if(result&&result.available!==false){
@@ -466,7 +466,8 @@ var ChatUI = {
     var status=document.getElementById('researchStatus');
     if(result.available===false){status.textContent='离线模式';lEl.textContent='本地RAG未连接：'+(result.error||'将继续使用当前 Intent DSL 生成');return;}
     var counts=result.source_counts||{};
-    status.textContent='命中 '+(result.documents||[]).length+' 条 · 覆盖度 '+Math.round((result.coverage||0)*100)+'% · 本地 '+(counts.local||0)+' / 联网 '+(counts.web||0);
+    var runtimeLabel=result.runtime_mode==='native_semantic'?'本机语义知识库 · ':result.runtime_mode==='native_lexical_fallback'?'本机关键词降级检索 · ':'';
+    status.textContent=runtimeLabel+'命中 '+(result.documents||[]).length+' 条 · 覆盖度 '+Math.round((result.coverage||0)*100)+'% · 本地 '+(counts.local||0)+' / 联网 '+(counts.web||0);
     if(wEl){
       if(result.web_search_used)wEl.textContent='本地知识不足，已联网检索 '+(result.web_sources||[]).length+' 个来源。';
       else if(result.web_search_needed)wEl.textContent='本地知识不足，联网搜索未获得可用结果，已使用本地结果继续生成。';

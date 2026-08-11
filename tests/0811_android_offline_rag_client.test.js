@@ -4,6 +4,7 @@ const path = require('path');
 const vm = require('vm');
 
 const source = fs.readFileSync(path.resolve(__dirname, '../ai/research/RAGClient.js'), 'utf8');
+const mainSource = fs.readFileSync(path.resolve(__dirname, '../main.js'), 'utf8');
 
 function load(options) {
   options = options || {};
@@ -98,10 +99,17 @@ async function testBrowserHttpTransport() {
   assert.strictEqual(urls[1], 'http://127.0.0.1:8765/api/experience');
 }
 
+function testNativeStatusCopyContract() {
+  assert(mainSource.includes('正在初始化本机知识库'));
+  assert(mainSource.includes('本机语义知识库'));
+  assert(mainSource.includes('本机关键词降级检索'));
+}
+
 (async function run() {
   await testNativeRetrieve();
   await testNativeSaveAndTimeout();
   await testBrowserHttpTransport();
+  testNativeStatusCopyContract();
   console.log('android offline RAG client tests passed');
 })().catch(error => {
   console.error(error);
