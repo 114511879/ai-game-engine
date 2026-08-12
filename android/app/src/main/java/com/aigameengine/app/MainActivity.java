@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -15,8 +16,12 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import com.aigameengine.app.rag.AndroidRagBridge;
+import com.aigameengine.app.rag.LocalRagEngine;
+
 @SuppressWarnings("deprecation")
 public final class MainActivity extends Activity {
+    private static final String TAG = "AIGameEngine";
     private static final String APP_ASSET_PREFIX = "file:///android_asset/web/";
     private static final String APP_URL = APP_ASSET_PREFIX + "index.html";
     private static final String ERROR_HTML =
@@ -28,6 +33,7 @@ public final class MainActivity extends Activity {
             + "<button onclick=\"location.href='" + APP_URL + "'\">Retry</button></main></body></html>";
 
     private WebView webView;
+    private AndroidRagBridge ragBridge;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -76,6 +82,13 @@ public final class MainActivity extends Activity {
                 }
             }
         });
+
+        try {
+            ragBridge = new AndroidRagBridge(webView, LocalRagEngine.create(this));
+            webView.addJavascriptInterface(ragBridge, "AndroidRag");
+        } catch (Exception error) {
+            Log.e(TAG, "Offline RAG bridge initialization failed", error);
+        }
 
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             webView.loadUrl(APP_URL);
@@ -134,6 +147,11 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (webView != null) {
+            webView.removeJavascriptInterface("AndroidRag");
+            if (ragBridge != null) {
+                ragBridge.close();
+                ragBridge = null;
+            }
             webView.stopLoading();
             webView.setWebChromeClient(null);
             webView.setWebViewClient(null);

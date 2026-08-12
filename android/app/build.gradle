@@ -1,5 +1,118 @@
+import groovy.json.JsonSlurper
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+
 plugins {
     id 'com.android.application'
+}
+
+def ragAssetDirectory = file('src/main/ragAssets/rag')
+def offlineRagAssetNames = [
+    'model.onnx',
+    'vocab.txt',
+    'model-manifest.json',
+    'seed-documents.jsonl',
+    'seed-vectors.bin'
+]
+
+tasks.register('verifyOfflineRagAssets') {
+    inputs.files(offlineRagAssetNames.collect { new File(ragAssetDirectory, it) })
+    doLast {
+        if (!ragAssetDirectory.isDirectory()) {
+            throw new GradleException('Offline RAG asset directory is missing')
+        }
+        offlineRagAssetNames.each { name ->
+            if (!new File(ragAssetDirectory, name).isFile()) {
+                throw new GradleException('Offline RAG asset is missing: ' + name)
+            }
+        }
+
+        def manifest = new JsonSlurper().parse(new File(ragAssetDirectory, 'model-manifest.json'))
+        if (manifest.model_revision != '7999e1d3359715c523056ef9478215996d62a620') {
+            throw new GradleException('Unexpected offline RAG model revision')
+        }
+        if (manifest.dimension != 512 || manifest.max_tokens != 256) {
+            throw new GradleException('Unexpected offline RAG model dimensions')
+        }
+        if (manifest.pooling != 'cls' || manifest.l2_normalize != true) {
+            throw new GradleException('Unexpected offline RAG pooling contract')
+        }
+
+        manifest.artifacts.each { name, expectedHash ->
+            if (!(name in ['model.onnx', 'vocab.txt', 'seed-documents.jsonl', 'seed-vectors.bin'])) {
+                throw new GradleException('Unexpected hashed RAG artifact: ' + name)
+            }
+            if (!(expectedHash ==~ /[0-9a-f]{64}/)) {
+                throw new GradleException('Invalid RAG artifact hash: ' + name)
+            }
+            def digest = MessageDigest.getInstance('SHA-256')
+            new File(ragAssetDirectory, name).withInputStream { stream ->
+                byte[] chunk = new byte[1024 * 1024]
+                int length
+                while ((length = stream.read(chunk)) != -1) {
+                    digest.update(chunk, 0, length)
+                }
+            }
+            def actualHash = digest.digest().collect { String.format('%02x', it & 0xff) }.join()
+            if (actualHash != expectedHash) {
+                throw new GradleException('RAG artifact hash mismatch: ' + name)
+            }
+        }
+        if (manifest.artifacts.keySet() as Set != ['model.onnx', 'vocab.txt', 'seed-documents.jsonl', 'seed-vectors.bin'] as Set) {
+            throw new GradleException('RAG artifact manifest is incomplete')
+        }
+
+        def seedIds = []
+        new File(ragAssetDirectory, 'seed-documents.jsonl').eachLine('UTF-8') { line ->
+            if (!line.trim().isEmpty()) {
+                def document = new JsonSlurper().parseText(line)
+                if (!(document.id instanceof String) || document.id.isEmpty()) {
+                    throw new GradleException('Seed document has an invalid ID')
+                }
+                seedIds.add(document.id)
+            }
+        }
+        if (seedIds.size() != 19 || seedIds.toSet().size() != 19) {
+            throw new GradleException('Expected 19 unique offline RAG seed documents')
+        }
+
+        byte[] vectorBytes = new File(ragAssetDirectory, 'seed-vectors.bin').bytes
+        ByteBuffer vectors = ByteBuffer.wrap(vectorBytes).order(ByteOrder.LITTLE_ENDIAN)
+        byte[] magic = new byte[8]
+        vectors.get(magic)
+        if (!Arrays.equals(magic, 'AGERAG1\u0000'.getBytes(StandardCharsets.US_ASCII))) {
+            throw new GradleException('Invalid offline RAG vector magic')
+        }
+        int vectorCount = vectors.getInt()
+        int dimension = vectors.getInt()
+        if (vectorCount != 19 || dimension != 512) {
+            throw new GradleException('Invalid offline RAG vector header')
+        }
+        def vectorIds = []
+        for (int row = 0; row < vectorCount; row++) {
+            if (vectors.remaining() < 2) {
+                throw new GradleException('Truncated offline RAG vector ID')
+            }
+            int idLength = Short.toUnsignedInt(vectors.getShort())
+            if (idLength == 0 || vectors.remaining() < idLength + dimension * Float.BYTES) {
+                throw new GradleException('Truncated offline RAG vector row')
+            }
+            byte[] idBytes = new byte[idLength]
+            vectors.get(idBytes)
+            vectorIds.add(new String(idBytes, StandardCharsets.UTF_8))
+            for (int column = 0; column < dimension; column++) {
+                float value = vectors.getFloat()
+                if (!Float.isFinite(value)) {
+                    throw new GradleException('Offline RAG vector contains a non-finite value')
+                }
+            }
+        }
+        if (vectors.hasRemaining() || vectorIds != seedIds || vectorIds.toSet().size() != 19) {
+            throw new GradleException('Offline RAG vectors do not match seed document order')
+        }
+    }
 }
 
 def webRoot = rootProject.projectDir.parentFile
@@ -87,7 +200,7 @@ tasks.register('verifyWebAssetSync') {
             }
         }
 
-        ['android', 'docs', 'server', 'tests'].each { excludedPath ->
+        ['android', 'docs', 'server', 'tests', 'rag'].each { excludedPath ->
             if (new File(destinationRoot, excludedPath).exists()) {
                 throw new GradleException('Excluded path was packaged: ' + excludedPath)
             }
@@ -162,23 +275,38 @@ android {
         targetSdk 33
         versionCode 1
         versionName '1.0-debug'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
 
     buildTypes {
         debug {
             debuggable true
+            ndk {
+                abiFilters 'x86', 'x86_64', 'arm64-v8a', 'armeabi-v7a'
+            }
+        }
+        release {
+            ndk {
+                abiFilters 'arm64-v8a', 'armeabi-v7a'
+            }
         }
     }
 
     sourceSets {
         main {
             assets.srcDir(generatedWebAssets)
+            assets.srcDir('src/main/ragAssets')
         }
+    }
+
+    testOptions {
+        unitTests.includeAndroidResources = true
     }
 }
 
 tasks.named('preBuild').configure {
     dependsOn tasks.named('verifyNoEmbeddedCredentials')
+    dependsOn tasks.named('verifyOfflineRagAssets')
 }
 
 tasks.register('verifyMainActivityContract') {
@@ -199,10 +327,23 @@ tasks.register('verifyMainActivityContract') {
             'webView.onPause()',
             'webView.pauseTimers()',
             'webView.onResume()',
-            'webView.resumeTimers()'
+            'webView.resumeTimers()',
+            'addJavascriptInterface',
+            '"AndroidRag"',
+            'LocalRagEngine.create(this)',
+            'ragBridge.close()',
+            'removeJavascriptInterface("AndroidRag")'
         ].each { requiredText ->
             if (!sourceText.contains(requiredText)) {
                 throw new GradleException('MainActivity contract is missing: ' + requiredText)
+            }
+        }
+        ['AI-ENGINE启动.html', 'game.html'].each { pageName ->
+            def pageText = new File(webRoot, pageName).getText('UTF-8')
+            ["frame-src 'none'", "object-src 'none'", 'https://api.deepseek.com'].each { requiredText ->
+                if (!pageText.contains(requiredText)) {
+                    throw new GradleException('Content Security Policy is missing from ' + pageName + ': ' + requiredText)
+                }
             }
         }
     }
@@ -214,4 +355,13 @@ tasks.named('check').configure {
     dependsOn tasks.named('verifyRuntimeAPIKeyContract')
     dependsOn tasks.named('verifyBackupPolicyContract')
     dependsOn tasks.named('verifyMainActivityContract')
+    dependsOn tasks.named('verifyOfflineRagAssets')
+}
+
+dependencies {
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.10.3'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
 }
