@@ -45,6 +45,7 @@ AI Game Engine
    - **✨ AI生成**：AI生成后直接运行
    - **🔬 生成+测试**：AI生成 + 3轮Bug修复优化
    - **🧠 AI导演**：意图分析 → 蓝图 → 生成 → 测试 → 评估 → 优化闭环
+   - **🧬 进化**：生成合格基线后，显式运行受控遗传优化并安全晋升最佳版本
    - **🤖 AI试玩**：对当前游戏手动运行AI测试
 
 ## AI 游戏顾问与本地设计检索
@@ -139,6 +140,18 @@ EvaluationResult + QAResult + RuntimeMetrics + SimulationMemory Trend
 `fun_proxy` 是根据参与度、完成体验、行为丰富度、节奏和挫败信号计算的行为代理，不代表真实玩家的主观趣味评分。QA 与运行错误只通过独立 penalty 扣减最终 Fitness，不会篡改 `fun_proxy`。缺少 Blueprint Metadata 时，`novelty` 使用中性值 `0.5`、置信度 `0.3`；评分结果同时输出各维度和总体置信度。
 
 V2 的 `final_fitness` 可供版本排序，并预留为未来遗传算法选择信号和强化学习 Reward 来源。V2 本身不执行遗传算法或强化学习训练。
+
+## Genetic Evolution V3
+
+V3 增加默认关闭的遗传优化层。普通生成和普通 Director 不会启动 GA；只有点击 **🧬 进化** 或显式调用 `director.runEvolution(..., {enabled: true})` 才会产生候选评估成本。
+
+优化器只能修改 Game DSL 的 `optimization.variables` 白名单路径，`immutable` 对祖先和后代路径都具有更高优先级。旧 DSL 由 `OptimizationSchemaBuilder` 按游戏类型和引擎能力选择固定安全模板，不扫描或猜测任意数值字段。所有随机决策使用 UTF-8 FNV-1a 32-bit 与 Mulberry32 派生 seed；相同 baseline、配置、seed 和确定性 evaluator 会产生相同候选序列。
+
+默认 `default_ga_v3` 配置为 6 个候选、2 个精英、3 代（`g0`、`g1`、`g2`），Tournament Selection 大小为 3，Uniform Crossover 概率为 0.7。Candidate 依次通过 deterministic FinalQA、Simulation 和 FitnessCalculator V2，唯一优化目标是 `final_fitness`。共享 Engine/canvas 下候选严格顺序评估，不并发运行。
+
+实验 Candidate 只进入 `EvolutionMemory`（`age_evolution_memory_v3`）；只有 `EvolutionPromoter` 成功提交的 Winner 才进入正式 `SimulationMemory` 和版本历史。Promotion 复用 Winner 已有的 EvaluationResult/FitnessResult，不重新模拟，并以 `current_version` 更新作为事务提交点。停止进化会通过 AbortSignal 阻止新候选，清理当前评估、恢复 baseline、保存已有实验轨迹且不执行 Promotion。
+
+V3 不包含强化学习训练，也不替代 Director 现有的 DSL 正确性修补循环。
 
 ## 技术栈
 

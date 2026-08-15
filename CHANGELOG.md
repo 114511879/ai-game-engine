@@ -1,5 +1,32 @@
 # AI Game Engine 更新日志
 
+## AI Game Director 2.0 V3 - Genetic Evolution
+
+日期: 2026-08-15
+
+新增:
+- 独立 **🧬 进化** 入口，普通生成和普通 Director 默认不运行遗传算法
+- `optimization.variables` 显式基因白名单、immutable 双向路径保护和旧 DSL 安全模板
+- UTF-8 FNV-1a 32-bit + Mulberry32 可复现实验随机源
+- integer、number、enum、boolean 四类型单步 Bounded Mutation
+- 小种群 Tournament Selection、Uniform Crossover、Elitism 和标准化基因向量去重
+- 顺序 CandidateEvaluator：deterministic FinalQA → Engine → Simulation → FitnessResult 2.0
+- 独立 `EvolutionMemory` 实验历史和仅接收晋升 Winner 的 `SimulationMemory`
+- `EvolutionPromoter` 事务提交、失败回滚和 baseline Engine 恢复
+- AbortSignal 安全取消、代/候选/Fitness 进度展示和停止控制
+
+默认配置:
+- population 6、elite 2、generation 3（g0/g1/g2）
+- tournament size 3、crossover rate 0.7、最多 5 个变异基因
+- 最多 5 次重复重试、18 次候选评估硬上限、3 个失败候选预算
+
+说明:
+- V3 只优化 V2 `final_fitness`，不直接优化单一 play time 或 fun_proxy
+- 共享 Engine/canvas 下候选严格顺序评估，不并发运行
+- V3 不包含强化学习训练，也不替代现有 DSL 正确性修补循环
+
+---
+
 ## AI Game Director 2.0 V2 - FitnessCalculator
 
 日期: 2026-08-11
