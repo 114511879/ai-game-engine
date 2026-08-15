@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>AI-ENGINE 启动</title>
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
 
@@ -96,6 +96,27 @@
       <div id="researchDocuments" class="research-documents"></div>
       <div id="researchLimits" class="research-limits"></div>
     </section>
+    <section id="evolutionPanel" class="evolution-panel" style="display:none" aria-live="polite">
+      <div class="evolution-header">
+        <div>
+          <span class="evolution-title">🧬 游戏进化</span>
+          <span class="evolution-status" id="evolutionStatus">准备基线</span>
+        </div>
+        <span class="evolution-candidate" id="evolutionCandidate">Generation 0 / 3</span>
+      </div>
+      <div class="evolution-progress-track" aria-hidden="true">
+        <div class="evolution-progress-fill" id="evolutionProgressBar" style="width:0%"></div>
+      </div>
+      <div class="evolution-stats">
+        <div><span>基线 Fitness</span><strong id="evolutionBaselineFitness">--</strong></div>
+        <div><span>当前 Fitness</span><strong id="evolutionCurrentFitness">--</strong></div>
+        <div><span>最佳 Fitness</span><strong id="evolutionBestFitness">--</strong></div>
+        <div><span>提升</span><strong id="evolutionImprovement">--</strong></div>
+      </div>
+      <div class="evolution-actions">
+        <button id="btnStopEvolution" class="evolution-stop" type="button">停止进化</button>
+      </div>
+    </section>
     <!-- 消息列表动态插入 -->
     <div class="messages" id="messages"></div>
   </div>
@@ -113,6 +134,9 @@
       </div>
       <textarea id="prompt" class="chat-input" placeholder="描述你想玩的游戏..." rows="1"></textarea>
       <div class="input-tools-right">
+        <button class="tool-btn tool-evolution" id="btnEvolution" title="进化：生成基线并运行遗传优化" aria-label="进化游戏">
+          🧬 <span class="tool-label">进化</span>
+        </button>
         <button class="tool-btn tool-director" id="btnDirector" title="AI导演：自动分析→生成→测试→优化">
           🧠 <span class="tool-label">导演</span>
         </button>
@@ -234,6 +258,21 @@
 <script src="ai/director/DirectorAgent.js"></script>
 <script src="ai/simulation/SimulationMemory.js"></script>
 <script src="ai/simulation/SimulationAgent.js"></script>
+<script src="evolution/EvolutionProtocols.js"></script>
+<script src="evolution/EvolutionProfiles.js"></script>
+<script src="evolution/SeededPRNG.js"></script>
+<script src="evolution/GeneSchemaValidator.js"></script>
+<script src="evolution/OptimizationSchemaBuilder.js"></script>
+<script src="evolution/GeneEncoder.js"></script>
+<script src="evolution/DuplicateDetector.js"></script>
+<script src="evolution/MutationEngine.js"></script>
+<script src="evolution/CrossoverEngine.js"></script>
+<script src="evolution/SelectionEngine.js"></script>
+<script src="evolution/GeneticOptimizer.js"></script>
+<script src="evolution/CandidateEvaluator.js"></script>
+<script src="evolution/EvolutionMemory.js"></script>
+<script src="evolution/EvolutionRunner.js"></script>
+<script src="evolution/EvolutionPromoter.js"></script>
 <script src="ai/director/GameDirector.js"></script>
 <script src="core/engine/Engine.js"></script>
 <script src="plugins/story/StoryPlugin.js?v=14"></script>

@@ -113,6 +113,7 @@ var ChatUI = {
   consultant: null,
   pendingMode: 'generate',
   pendingPrompt: '',
+  evolutionAbortController: null,
 
   init: function(){
     ChatUI.bindEvents();
@@ -133,6 +134,12 @@ var ChatUI = {
     // 测试按钮
     document.getElementById('btnGenTest').addEventListener('click', function(){
       ChatUI.submitPrompt('gentest');
+    });
+    document.getElementById('btnEvolution').addEventListener('click', function(){
+      ChatUI.submitPrompt('evolution');
+    });
+    document.getElementById('btnStopEvolution').addEventListener('click', function(){
+      ChatUI.stopEvolution();
     });
     document.getElementById('btnConsultantSkip').addEventListener('click', function(){
       ChatUI.finishConsultation(true);
@@ -214,6 +221,7 @@ var ChatUI = {
   showWelcome: function(){
     ChatUI.hideConsultant();
     ChatUI.hideResearch();
+    ChatUI.hideEvolutionPanel();
     document.getElementById('welcomePage').style.display = 'flex';
     document.getElementById('messages').innerHTML = '';
     document.getElementById('convTitle').textContent = '新对话';
@@ -221,11 +229,16 @@ var ChatUI = {
 
   // 新对话
   newConversation: function(){
+    if(ChatUI.evolutionAbortController&&!ChatUI.evolutionAbortController.signal.aborted){
+      ChatUI.evolutionAbortController.abort();
+    }
+    ChatUI.evolutionAbortController=null;
     ChatUI.currentConv = null;
     ChatUI.consultant = null;
     ChatUI.pendingMode = 'generate';
     ChatUI.pendingPrompt = '';
     ChatUI.hideConsultant();
+    ChatUI.hideEvolutionPanel();
     ChatUI.showWelcome();
     document.getElementById('prompt').value = '';
     document.getElementById('prompt').style.height = 'auto';
@@ -499,6 +512,7 @@ var ChatUI = {
       var result;
       if(ChatUI.pendingMode==='director')result=await ChatUI.runDirector(ChatUI.pendingPrompt,intent);
       else if(ChatUI.pendingMode==='gentest')result=await ChatUI.runGenerateAndTest(ChatUI.pendingPrompt,intent);
+      else if(ChatUI.pendingMode==='evolution')result=await ChatUI.runEvolutionMode(ChatUI.pendingPrompt,intent);
       else result=await ChatUI.runGenerate(ChatUI.pendingPrompt,intent);
       ChatUI.removeMessage(loadingId);
       if(result.success){
@@ -718,8 +732,256 @@ var ChatUI = {
       dsl:result.dsl,
       gameType:result.gameType || 'runner',
       title:((result.dsl.meta||{}).title || '未命名游戏'),
+      directorResult:result,
       summary:'🧠 导演完成 | '+fitnessText+' | 优化'+result.totalOptimizations+'次。点击下方打开游戏。'
     };
+  },
+
+  showEvolutionPanel: function(){
+    var panel=document.getElementById('evolutionPanel');
+    if(panel)panel.style.display='block';
+    ChatUI.updateEvolutionPanel({stage:'baseline',generation:0,candidate_id:'',progress:0});
+  },
+
+  hideEvolutionPanel: function(){
+    var panel=document.getElementById('evolutionPanel');
+    if(panel)panel.style.display='none';
+  },
+
+  stopEvolution: function(){
+    var controller=ChatUI.evolutionAbortController;
+    if(controller&&!controller.signal.aborted){
+      controller.abort();
+      ChatUI.updateEvolutionPanel({stage:'cancelling'});
+      ChatUI.updateLoading('正在安全停止进化...');
+    }
+  },
+
+  updateEvolutionPanel: function(status){
+    status=status||{};
+    var labels={
+      baseline:'正在生成基线',baseline_complete:'基线已就绪',generation:'准备新一代',candidate:'评估候选',
+      candidate_complete:'候选评估完成',cancelling:'正在安全停止',completed:'进化完成'
+    };
+    var statusEl=document.getElementById('evolutionStatus');
+    if(statusEl&&status.stage)statusEl.textContent=labels[status.stage]||status.stage;
+    var candidateEl=document.getElementById('evolutionCandidate');
+    var generation=Number(status.generation)||0;
+    var candidateMatch=String(status.candidate_id||'').match(/-c(\d+)$/);
+    var candidateIndex=candidateMatch?Number(candidateMatch[1])+1:0;
+    if(candidateEl)candidateEl.textContent='Generation '+(generation+1)+' / 3'+(candidateIndex?' · Candidate '+candidateIndex+' / 6':'');
+    var progress=typeof status.progress==='number'?status.progress:Math.min(100,Math.round(((generation*6+candidateIndex)/18)*100));
+    var progressEl=document.getElementById('evolutionProgressBar');
+    if(progressEl)progressEl.style.width=Math.max(0,Math.min(100,progress))+'%';
+    function setFitness(id,value){
+      var el=document.getElementById(id);
+      if(el&&typeof value==='number'&&isFinite(value))el.textContent=Math.round(value*100)+'%';
+    }
+    setFitness('evolutionBaselineFitness',status.baseline_fitness);
+    setFitness('evolutionCurrentFitness',status.current_fitness);
+    setFitness('evolutionBestFitness',status.best_fitness);
+    var baseline=typeof status.baseline_fitness==='number'?status.baseline_fitness:null;
+    var best=typeof status.best_fitness==='number'?status.best_fitness:null;
+    var improvement=document.getElementById('evolutionImprovement');
+    if(improvement&&baseline!==null&&best!==null){
+      var delta=best-baseline;
+      improvement.textContent=(delta>=0?'+':'')+Math.round(delta*100)+'%';
+    }
+  },
+
+  createEvolutionEngineAdapter: function(){
+    return{
+      reset:function(){eng.reset();},
+      teardown:function(){if(typeof eng.teardown==='function')eng.teardown();},
+      load:function(dsl){
+        var gameType=dsl&&dsl.meta&&dsl.meta.game_type||'runner';
+        var plugin=A.PluginSelector.select(gameType,A.PluginManager);
+        eng.load(dsl,plugin);
+        A.setGameState(A.STATE.RUNNING);
+        return dsl;
+      },
+      restoreBaseline:function(dsl){
+        if(typeof eng.teardown==='function')eng.teardown();
+        eng.reset();
+        this.load(dsl);
+      }
+    };
+  },
+
+  createPromotionStore: function(){
+    var simulationMemory=new A.SimulationMemory(localStorage);
+    function copy(value){return value===undefined?undefined:JSON.parse(JSON.stringify(value));}
+    function restoreRaw(key,value){if(value===null||value===undefined)localStorage.removeItem(key);else localStorage.setItem(key,value);}
+    return{
+      begin:function(){
+        if(!ChatUI.currentConv||!ChatUI.currentConv.id)throw new Error('promotion_conversation_required');
+        return{
+          conversations:localStorage.getItem(STORAGE_KEY),
+          game:localStorage.getItem('age_game_'+ChatUI.currentConv.id),
+          simulation:simulationMemory.snapshot(),
+          current_conv:copy(ChatUI.currentConv)
+        };
+      },
+      commit:function(data){
+        if(!ChatUI.currentConv||!ChatUI.currentConv.id)throw new Error('promotion_conversation_required');
+        var convId=ChatUI.currentConv.id;
+        var all=Memory.load();
+        var position=-1;
+        for(var index=0;index<all.length;index++)if(all[index].id===convId){position=index;break;}
+        var staged=copy(position>=0?all[position]:ChatUI.currentConv);
+        staged.versions=Array.isArray(staged.versions)?staged.versions:[];
+        staged.versions.push({
+          version_id:data.promoted_version_id,parent_version:data.parent_version,candidate_id:data.candidate_id,
+          source:'evolution',fitness:data.fitness&&data.fitness.final_fitness,created_at:Date.now()
+        });
+        staged.pending_version=data.promoted_version_id;
+        if(position>=0)all[position]=staged;else all.unshift(staged);
+        localStorage.setItem('age_game_'+convId,JSON.stringify(data.dsl));
+        localStorage.setItem(STORAGE_KEY,JSON.stringify(all));
+        simulationMemory.append({
+          run_id:data.run_id||('promotion-'+data.promoted_version_id),
+          game_id:data.game_id||convId,
+          version_id:data.promoted_version_id,
+          parent_version:data.parent_version,
+          persona:data.persona||'new_player',
+          changes:data.changes||[],
+          evaluation:data.evaluation||{},
+          fitness:data.fitness,
+          status:data.evaluation&&data.evaluation.status||'completed',
+          created_at:Date.now()
+        });
+        staged.dsl=data.dsl;
+        staged.current_version=data.promoted_version_id;
+        staged.updatedAt=Date.now();
+        delete staged.pending_version;
+        if(position>=0)all[position]=staged;else all[0]=staged;
+        localStorage.setItem(STORAGE_KEY,JSON.stringify(all));
+        ChatUI.currentConv=staged;
+        return{promoted_version_id:data.promoted_version_id};
+      },
+      rollback:function(snapshot){
+        restoreRaw(STORAGE_KEY,snapshot.conversations);
+        restoreRaw('age_game_'+snapshot.current_conv.id,snapshot.game);
+        simulationMemory.restore(snapshot.simulation);
+        ChatUI.currentConv=copy(snapshot.current_conv);
+      }
+    };
+  },
+
+  createEvolutionRuntime: function(){
+    var deterministicQA=new A.FinalQA({ai:null});
+    var engineAdapter=ChatUI.createEvolutionEngineAdapter();
+    var evaluator=new A.CandidateEvaluator({
+      finalQA:deterministicQA,
+      engine:engineAdapter,
+      simulation:new A.SimulationAgent(),
+      fitnessFactory:function(options){return new A.FitnessCalculator(options);}
+    });
+    var runner=new A.EvolutionRunner({
+      optimizer:new A.GeneticOptimizer(),
+      evaluator:evaluator,
+      memory:new A.EvolutionMemory(localStorage),
+      schemaValidator:new A.GeneSchemaValidator(),
+      schemaBuilder:A.OptimizationSchemaBuilder,
+      finalQA:deterministicQA,
+      selection:new A.SelectionEngine(),
+      engineAdapter:engineAdapter,
+      onStatus:ChatUI.updateEvolutionPanel
+    });
+    var promoter=new A.EvolutionPromoter({
+      finalQA:deterministicQA,
+      engine:engineAdapter,
+      store:ChatUI.createPromotionStore(),
+      idFactory:function(){return'v'+Date.now();}
+    });
+    var director=new A.GameDirector({evolutionRunner:runner,evolutionPromoter:promoter});
+    director._statusCallback=function(message){ChatUI.updateLoading(message);};
+    return{director:director,runner:runner,promoter:promoter,engine:engineAdapter};
+  },
+
+  persistEvolutionBaseline: function(baseline,versionId){
+    var conv=ChatUI.currentConv;
+    if(!conv||!conv.id)throw new Error('baseline_conversation_required');
+    conv.dsl=baseline.dsl;
+    conv.current_version=versionId;
+    conv.versions=Array.isArray(conv.versions)?conv.versions:[];
+    if(!conv.versions.some(function(version){return version.version_id===versionId;})){
+      conv.versions.push({version_id:versionId,parent_version:null,source:'director_baseline',fitness:baseline.directorResult.fitness.final_fitness,created_at:Date.now()});
+    }
+    conv.updatedAt=Date.now();
+    Memory.update(conv);
+    localStorage.setItem('age_game_'+conv.id,JSON.stringify(baseline.dsl));
+  },
+
+  runEvolutionMode: async function(prompt,intent){
+    ChatUI.evolutionAbortController=new AbortController();
+    var signal=ChatUI.evolutionAbortController.signal;
+    ChatUI.showEvolutionPanel();
+    var baseline=null;
+    try{
+      baseline=await ChatUI.runDirector(prompt,intent);
+      if(!baseline.success)return baseline;
+      var evidence=baseline.directorResult;
+      if(!evidence.fitness||evidence.fitness.schema_version!=='2.0'){
+        return{success:true,dsl:baseline.dsl,gameType:baseline.gameType,title:baseline.title,summary:'🧬 基线 Fitness 不可用，已保留导演版本。'};
+      }
+      var baselineVersion=evidence.fitness.version_id||evidence.simulationRecord&&evidence.simulationRecord.version_id||('v'+Date.now());
+      ChatUI.persistEvolutionBaseline(baseline,baselineVersion);
+      var schema=baseline.dsl.optimization&&Array.isArray(baseline.dsl.optimization.variables)
+        ?baseline.dsl.optimization:A.OptimizationSchemaBuilder.build(baseline.dsl,{engine_capability_version:'1.0'});
+      var baselineQA=JSON.parse(JSON.stringify(evidence.qa||{admitted:true,findings:[]}));
+      baselineQA.semantic_qa={status:'passed',scope:'baseline',optimization_scope_hash:A.EvolutionProtocols.scopeHash(schema)};
+      ChatUI.updateEvolutionPanel({
+        stage:'baseline_complete',generation:0,progress:0,
+        baseline_fitness:evidence.fitness.final_fitness,
+        current_fitness:evidence.fitness.final_fitness,
+        best_fitness:evidence.fitness.final_fitness
+      });
+      var runtime=ChatUI.createEvolutionRuntime();
+      var metadata=A.BlueprintMetadata&&A.BlueprintMetadata.fromBlueprint
+        ?A.BlueprintMetadata.fromBlueprint(evidence.blueprint||evidence.design&&evidence.design.blueprint,baseline.dsl,intent,{game_id:evidence.fitness.game_id,version_id:baselineVersion})
+        :null;
+      var evolution=await runtime.director.runEvolution(baseline.dsl,{
+        enabled:true,
+        baseline_version:baselineVersion,
+        baseline_fitness:evidence.fitness,
+        baseline_qa:baselineQA,
+        baseline_evaluation:evidence.evaluation,
+        random_seed:'ga-'+ChatUI.currentConv.id+'-'+baselineVersion,
+        game_id:evidence.fitness.game_id||ChatUI.currentConv.id,
+        intent:intent,
+        blueprint:evidence.blueprint||evidence.design&&evidence.design.blueprint,
+        blueprint_metadata:metadata,
+        fitness_profile:'default_v2',
+        deterministic:false,
+        signal:signal
+      });
+      ChatUI.currentConv.last_evolution={run_id:evolution.run_id,status:evolution.status,stopped_reason:evolution.stopped_reason,promotion:evolution.promotion};
+      var promoted=evolution.promotion&&evolution.promotion.status==='promoted';
+      var finalDSL=promoted?evolution.dsl:baseline.dsl;
+      var summary;
+      if(evolution.stopped_reason==='cancelled')summary='🧬 进化已停止，已保留基线版本。';
+      else if(promoted)summary='🧬 进化完成 | Fitness 提升 '+Math.round((evolution.best_candidate.fitness_delta||0)*100)+'% | 已晋升 '+evolution.promotion.promoted_version_id+'。';
+      else summary='🧬 进化未晋升新版本（'+(evolution.stopped_reason||evolution.promotion&&evolution.promotion.reason||'无可用候选')+'），已保留基线。';
+      ChatUI.updateEvolutionPanel({
+        stage:'completed',generation:2,progress:100,
+        baseline_fitness:evidence.fitness.final_fitness,
+        current_fitness:evolution.best_candidate&&evolution.best_candidate.fitness,
+        best_fitness:evolution.best_candidate&&evolution.best_candidate.fitness
+      });
+      return{
+        success:true,dsl:finalDSL,gameType:finalDSL.meta&&finalDSL.meta.game_type||baseline.gameType,
+        title:finalDSL.meta&&finalDSL.meta.title||baseline.title,summary:summary,evolution:evolution
+      };
+    }catch(error){
+      if(baseline&&baseline.success){
+        return{success:true,dsl:baseline.dsl,gameType:baseline.gameType,title:baseline.title,summary:'🧬 进化异常，已恢复并保留基线：'+error.message};
+      }
+      return{success:false,error:'进化失败: '+error.message};
+    }finally{
+      ChatUI.hideEvolutionPanel();
+      ChatUI.evolutionAbortController=null;
+    }
   },
 
   // 加载预设
