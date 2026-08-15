@@ -108,6 +108,18 @@ async function run() {
   assert.strictEqual(cancelledResult.status, 'cancelled');
   assert.strictEqual(abortQaCalls, 0);
 
+  const duringQaController = new AbortController();
+  let postQaEngineCalls = 0;
+  const cancelledAfterQa = new A.CandidateEvaluator({
+    finalQA: {validate() { duringQaController.abort(); return {admitted: true, findings: []}; }},
+    engine: {reset() { postQaEngineCalls++; }, load() { postQaEngineCalls++; }, teardown() { postQaEngineCalls++; }},
+    simulation: {run() { throw new Error('simulation must not run'); }},
+    fitnessFactory() { throw new Error('fitness must not run'); }
+  });
+  const cancelledAfterQaResult = await cancelledAfterQa.evaluate(validDsl, {signal: duringQaController.signal});
+  assert.strictEqual(cancelledAfterQaResult.status, 'cancelled');
+  assert.strictEqual(postQaEngineCalls, 0, 'abort after QA must prevent Engine admission');
+
   const timeoutCalls = [];
   const timed = new A.CandidateEvaluator({
     finalQA: {validate() { timeoutCalls.push('qa'); return {admitted: true, findings: []}; }},

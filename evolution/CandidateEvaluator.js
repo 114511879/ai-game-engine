@@ -38,6 +38,7 @@ A.CandidateEvaluator.prototype.evaluate=async function(candidateDSL,options){
       simulation_deterministic:false,elapsed_ms:Math.max(0,this.clock()-started),error:errorData(qaError)
     };
   }
+  if(options.signal&&options.signal.aborted)return abortedResult(this.clock,started);
   if(!qa||qa.admitted!==true){
     return{
       status:'qa_rejected',qa:qa||null,evaluation:null,runtime:{},fitness:null,
