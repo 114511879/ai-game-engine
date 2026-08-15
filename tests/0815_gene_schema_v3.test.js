@@ -16,6 +16,8 @@ function load(file) {
 load('evolution/EvolutionProtocols.js');
 load('evolution/GeneSchemaValidator.js');
 load('evolution/OptimizationSchemaBuilder.js');
+load('evolution/GeneEncoder.js');
+load('evolution/DuplicateDetector.js');
 
 const A = sandbox.AGE;
 const baseline = {
@@ -89,5 +91,42 @@ assert.deepStrictEqual(Array.from(built.immutable), ['meta.game_id', 'meta.engin
 
 const builtAgain = A.OptimizationSchemaBuilder.build(baseline, {engine_capability_version: '1.0'});
 assert.strictEqual(A.EvolutionProtocols.canonical(built), A.EvolutionProtocols.canonical(builtAgain));
+
+const vector = A.GeneEncoder.encode(baseline, result.valid_genes);
+assert.deepStrictEqual(
+  Array.from(vector).map(gene => gene.path),
+  ['meta.game_type', 'player.hp', 'world.gravity']
+);
+const applied = A.GeneEncoder.apply(baseline, result.valid_genes, [
+  {path: 'player.hp', value: 11},
+  {path: 'world.gravity', value: 1.2000000000000002},
+  {path: 'meta.game_type', value: 'runner'}
+]);
+assert.strictEqual(applied.dsl.player.hp, 11);
+assert.strictEqual(applied.dsl.world.gravity, 1.2);
+assert.strictEqual(baseline.player.hp, 9, 'baseline must remain immutable');
+assert.deepStrictEqual(JSON.parse(JSON.stringify(applied.changes)), [
+  {name: 'hp', path: 'player.hp', old: 9, new: 11, importance: 'high'},
+  {name: 'gravity', path: 'world.gravity', old: 1, new: 1.2, importance: 'medium'}
+]);
+assert.throws(
+  () => A.GeneEncoder.apply(baseline, result.valid_genes, [{path: 'assets.characters', value: []}]),
+  /undeclared_gene_path/
+);
+
+const detector = new A.DuplicateDetector();
+const fingerprintA = detector.fingerprint([
+  {path: 'player.hp', value: 11, created_at: 1},
+  {path: 'world.gravity', value: 1.2}
+]);
+const fingerprintB = detector.fingerprint([
+  {path: 'world.gravity', value: 1.2, trace: ['ignored']},
+  {path: 'player.hp', value: 11, version_id: 'v9'}
+]);
+assert.strictEqual(fingerprintA, fingerprintB);
+assert.strictEqual(detector.add([{path: 'player.hp', value: 11}]), true);
+assert.strictEqual(detector.add([{path: 'player.hp', value: 11}]), false);
+detector.clear();
+assert.strictEqual(detector.has([{path: 'player.hp', value: 11}]), false);
 
 console.log('gene schema v3 tests passed');
