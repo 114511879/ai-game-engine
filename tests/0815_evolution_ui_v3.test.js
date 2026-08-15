@@ -145,6 +145,35 @@ assert(!/runDirector:[\s\S]{0,800}runEvolution\(/.test(main), 'ordinary Director
     promotedVersion: 'v2', promotedTitle: 'UI Winner', promotedHistoryCount: 1,
     rolledBackVersion: 'v1', rolledBackTitle: 'UI Baseline', rolledBackHistoryCount: 0
   });
+  await page.locator('#btnNewChat').click();
+  await page.evaluate(() => {
+    window.__promotionRuns = 0;
+    ChatUI.createEvolutionRuntime = function() {
+      return {
+        director: {
+          async runEvolution() {
+            window.__promotionRuns++;
+            const dsl = {meta: {game_type: 'runner', game_id: 'game-ui', title: 'UI Winner'}, player: {hp: 5}};
+            return {
+              schema_version: '3.0', run_id: 'ui-success-run', game_id: 'game-ui',
+              status: 'completed', stopped_reason: 'max_generations', dsl,
+              best_candidate: {candidate_id: 'g2-c2', dsl, fitness: 0.82, fitness_delta: 0.12},
+              promotion: {status: 'promoted', promoted_version_id: 'v2'}
+            };
+          }
+        }
+      };
+    };
+  });
+  await page.locator('#prompt').fill('再次生成简单跑酷游戏');
+  await page.locator('#btnEvolution').click();
+  await page.locator('#consultantPanel').waitFor({state: 'visible'});
+  await page.locator('#btnConsultantSkip').click();
+  await page.locator('#evolutionPanel').waitFor({state: 'hidden'});
+  await page.locator('.game-card-title').last().waitFor({state: 'visible'});
+  assert((await page.locator('.game-card-title').last().innerText()).includes('UI Winner'));
+  assert((await page.locator('#messages').innerText()).includes('已晋升 v2'));
+  assert.strictEqual(await page.evaluate(() => window.__promotionRuns), 1);
   assert.strictEqual(errors.length, 0, errors.join('\n'));
   await browser.close();
   console.log('evolution UI v3 tests passed');
