@@ -82,6 +82,8 @@ async function run() {
     append(record) { simulationRecords.push(record); return record; }
   };
   let fitnessCalls = 0;
+  let evolutionRunnerCalls = 0;
+  let evolutionPromoterCalls = 0;
   const fitnessCalculator = {
     calculateFitness(evaluation, qa, runtime, trend, metadata) {
       fitnessCalls++;
@@ -107,7 +109,9 @@ async function run() {
     simulationAgent,
     simulationMemory,
     fitnessCalculator,
-    runtimeMetrics: function() { return {started: true, crashed: false}; }
+    runtimeMetrics: function() { return {started: true, crashed: false}; },
+    evolutionRunner: {runEvolution() { evolutionRunnerCalls++; }},
+    evolutionPromoter: {promote() { evolutionPromoterCalls++; }}
   });
   gameDirector.maxIterations = 0;
   const result = await gameDirector.runDirectorLoop('生成一个跑酷游戏', intent);
@@ -124,6 +128,8 @@ async function run() {
   assert.strictEqual(fitnessCalls, 1);
   assert.strictEqual(result.fitness.final_fitness, 0.77);
   assert.strictEqual(simulationRecords[0].fitness.final_fitness, 0.77);
+  assert.strictEqual(evolutionRunnerCalls, 0, 'ordinary Director must not start EvolutionRunner');
+  assert.strictEqual(evolutionPromoterCalls, 0, 'ordinary Director must not start EvolutionPromoter');
 
   A.callAI = async function() {
     return {meta: {game_type: 'runner'}, player: {hp: 0}, rules: {}};
