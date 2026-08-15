@@ -78,7 +78,8 @@ A.AgentProtocols={
         engagement_proxy:Math.max(0,Math.min(10,number(metrics.engagement_proxy,0)))
       },
       bugs:array(input.bugs),
-      reward:number(input.reward,0)
+      reward:number(input.reward,0),
+      simulation_deterministic:input.simulation_deterministic===true
     };
   },
 

@@ -6,6 +6,16 @@ function average(rows,key){
   return rows.reduce(function(sum,row){return sum+(Number(row[key])||0);},0)/rows.length;
 }
 
+function abortError(){
+  var error=new Error('Simulation aborted');
+  error.name='AbortError';
+  return error;
+}
+
+function checkAbort(signal){
+  if(signal&&signal.aborted)throw abortError();
+}
+
 A.SimulationAgent=function(options){
   options=options||{};
   this.episodeRunner=options.episodeRunner||this.runEngineEpisode;
@@ -17,7 +27,12 @@ A.SimulationAgent.prototype.run=async function(engine,options){
   var persona=options.persona||'new_player';
   var rows=[];
   for(var index=0;index<count;index++){
-    rows.push(await this.episodeRunner(engine,persona,index,options));
+    checkAbort(options.signal);
+    var episodeOptions=Object.assign({},options,{
+      seed:(options.seed?String(options.seed):'')+':episode'+index
+    });
+    rows.push(await this.episodeRunner(engine,persona,index,episodeOptions));
+    checkAbort(options.signal);
   }
   var deaths=rows.filter(function(row){return row.death;}).length;
   var completions=rows.filter(function(row){return row.completed;}).length;
@@ -38,11 +53,14 @@ A.SimulationAgent.prototype.run=async function(engine,options){
       engagement_proxy:average(rows,'engagement_proxy')
     },
     bugs:bugs,
-    reward:Math.round(completionRate*50+coverage*30-bugs.length*10)
+    reward:Math.round(completionRate*50+coverage*30-bugs.length*10),
+    simulation_deterministic:options.deterministic===true
   });
 };
 
 A.SimulationAgent.prototype.runEngineEpisode=async function(engine,persona,index,options){
+  options=options||{};
+  checkAbort(options.signal);
   var mode=persona==='explorer'?'explore':persona==='stress_tester'?'stress':'progress';
   var tester=new A.AITestAgent(engine);
   var observer=new A.GameObserver(engine);
@@ -53,19 +71,28 @@ A.SimulationAgent.prototype.runEngineEpisode=async function(engine,persona,index
   anomaly.start();
   engine.playTester=tester;
 
-  await new Promise(function(resolve){
+  await new Promise(function(resolve,reject){
+    var finished=false;
+    var finish=function(error){
+      if(finished)return;
+      finished=true;
+      try{tester.stop();}catch(stopError){}
+      try{observer.stop();}catch(observerError){}
+      try{anomaly.stop();}catch(anomalyError){}
+      engine.playTester=null;
+      if(error)reject(error);else resolve();
+    };
     var tick=function(){
+      if(options.signal&&options.signal.aborted){finish(abortError());return;}
       try{observer.update();anomaly.update();}catch(error){}
       if(!tester._active||tester._done||engine.gameOver||engine._win||tester.frame>=tester.maxFrames){
-        tester.stop();
-        observer.stop();
-        anomaly.stop();
-        engine.playTester=null;
-        resolve();
+        finish();
       }else setTimeout(tick,50);
     };
     tick();
   });
+
+  checkAbort(options.signal);
 
   var report=tester.generateReport();
   var anomalyReport=anomaly.generateReport();
