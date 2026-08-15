@@ -29,23 +29,6 @@ A.CandidateEvaluator.prototype.evaluate=async function(candidateDSL,options){
   var started=this.clock();
   if(options.signal&&options.signal.aborted)return abortedResult(this.clock,started);
 
-  var qa;
-  try{
-    qa=await Promise.resolve(this.finalQA.validate(candidateDSL,options.intent,options.blueprint));
-  }catch(qaError){
-    return{
-      status:'failed',qa:null,evaluation:null,runtime:{},fitness:null,
-      simulation_deterministic:false,elapsed_ms:Math.max(0,this.clock()-started),error:errorData(qaError)
-    };
-  }
-  if(options.signal&&options.signal.aborted)return abortedResult(this.clock,started);
-  if(!qa||qa.admitted!==true){
-    return{
-      status:'qa_rejected',qa:qa||null,evaluation:null,runtime:{},fitness:null,
-      simulation_deterministic:false,elapsed_ms:Math.max(0,this.clock()-started),error:null
-    };
-  }
-
   var controller=this.createAbortController();
   var timeoutMs=Number(options.timeout_ms);
   if(!isFinite(timeoutMs)||timeoutMs<=0)timeoutMs=300000;
@@ -65,6 +48,54 @@ A.CandidateEvaluator.prototype.evaluate=async function(candidateDSL,options){
   if(options.signal&&typeof options.signal.addEventListener==='function'){
     options.signal.addEventListener('abort',externalHandler,{once:true});
   }
+  if(options.signal&&options.signal.aborted)externalHandler();
+
+  async function waitForSafeSettlement(operation){
+    try{
+      return await Promise.race([operation,abortPromise]);
+    }catch(error){
+      if(controller.signal.aborted){
+        try{await operation;}catch(settleError){}
+      }
+      throw error;
+    }
+  }
+
+  function releaseAbort(){
+    clearTimeout(timer);
+    if(options.signal&&typeof options.signal.removeEventListener==='function'){
+      options.signal.removeEventListener('abort',externalHandler);
+    }
+  }
+
+  var qa=null;
+  try{
+    qa=await waitForSafeSettlement(Promise.resolve().then(function(){
+      return this.finalQA.validate(candidateDSL,options.intent,options.blueprint);
+    }.bind(this)));
+  }catch(qaError){
+    releaseAbort();
+    return{
+      status:timedOut?'timeout':(externallyAborted||(qaError&&qaError.name==='AbortError')?'cancelled':'failed'),
+      qa:null,evaluation:null,runtime:{},fitness:null,
+      simulation_deterministic:false,elapsed_ms:Math.max(0,this.clock()-started),error:errorData(qaError)
+    };
+  }
+  if(controller.signal.aborted){
+    releaseAbort();
+    return timedOut?{
+      status:'timeout',qa:qa,evaluation:null,runtime:{},fitness:null,
+      simulation_deterministic:false,elapsed_ms:Math.max(0,this.clock()-started),
+      error:{name:'AbortError',message:'Candidate evaluation timed out',code:''}
+    }:abortedResult(this.clock,started);
+  }
+  if(!qa||qa.admitted!==true){
+    releaseAbort();
+    return{
+      status:'qa_rejected',qa:qa||null,evaluation:null,runtime:{},fitness:null,
+      simulation_deterministic:false,elapsed_ms:Math.max(0,this.clock()-started),error:null
+    };
+  }
 
   var evaluation=null;
   var fitness=null;
@@ -72,10 +103,9 @@ A.CandidateEvaluator.prototype.evaluate=async function(candidateDSL,options){
   var resultStatus='failed';
   var failure=null;
   try{
-    await Promise.resolve(this.engine.reset());
-    await Promise.resolve(this.engine.load(candidateDSL));
-    evaluation=await Promise.race([
-      this.simulation.run(this.engine,{
+    await waitForSafeSettlement(Promise.resolve().then(function(){return this.engine.reset();}.bind(this)));
+    await waitForSafeSettlement(Promise.resolve().then(function(){return this.engine.load(candidateDSL);}.bind(this)));
+    var simulationOperation=Promise.resolve().then(function(){return this.simulation.run(this.engine,{
         seed:options.candidate_seed||'',
         candidate_seed:options.candidate_seed||'',
         persona:options.persona||'new_player',
@@ -83,22 +113,17 @@ A.CandidateEvaluator.prototype.evaluate=async function(candidateDSL,options){
         signal:controller.signal,
         deterministic:options.deterministic===true,
         simulation_id:options.simulation_id
-      }),
-      abortPromise
-    ]);
+      });}.bind(this));
+    evaluation=await waitForSafeSettlement(simulationOperation);
     var calculator=this.fitnessFactory({
       profile:options.fitness_profile||'default_v2',
       game_id:options.game_id||candidateDSL&&candidateDSL.meta&&candidateDSL.meta.game_id||'',
       version_id:options.candidate_id||'candidate',
       fitness_id:options.fitness_id
     });
-    fitness=await Promise.resolve(calculator.calculateFitness(
-      evaluation,
-      qa,
-      runtime,
-      options.trend||{},
-      options.blueprint_metadata
-    ));
+    fitness=await waitForSafeSettlement(Promise.resolve().then(function(){
+      return calculator.calculateFitness(evaluation,qa,runtime,options.trend||{},options.blueprint_metadata);
+    }));
     if(!fitness||typeof fitness.final_fitness!=='number'||!isFinite(fitness.final_fitness)||fitness.final_fitness<0||fitness.final_fitness>1){
       var fitnessError=new Error('invalid_candidate_fitness');
       fitnessError.code='invalid_candidate_fitness';
@@ -111,10 +136,7 @@ A.CandidateEvaluator.prototype.evaluate=async function(candidateDSL,options){
     else if(externallyAborted||(error&&error.name==='AbortError'))resultStatus='cancelled';
     else resultStatus='failed';
   }finally{
-    clearTimeout(timer);
-    if(options.signal&&typeof options.signal.removeEventListener==='function'){
-      options.signal.removeEventListener('abort',externalHandler);
-    }
+    releaseAbort();
     try{await Promise.resolve(this.engine.teardown());}catch(teardownError){if(!failure)failure=teardownError;}
     try{await Promise.resolve(this.engine.reset());}catch(resetError){if(!failure)failure=resetError;}
     if(failure&&resultStatus==='evaluated')resultStatus='failed';

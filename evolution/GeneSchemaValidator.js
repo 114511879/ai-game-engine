@@ -77,8 +77,15 @@ A.GeneSchemaValidator.prototype.validate=function(baseline,schema){
   var immutable=Array.isArray(schema.immutable)?schema.immutable:[];
   var findings=[];
   var valid=[];
-  var names={};
-  var paths={};
+  var nameCounts={};
+  var pathCounts={};
+
+  variables.forEach(function(source){
+    var gene=source&&typeof source==='object'?source:{};
+    if(typeof gene.name==='string'&&gene.name)nameCounts[gene.name]=(nameCounts[gene.name]||0)+1;
+    var path=P.normalizePath(gene.path);
+    if(path)pathCounts[path]=(pathCounts[path]||0)+1;
+  });
 
   for(var index=0;index<variables.length;index++){
     var source=variables[index];
@@ -86,11 +93,9 @@ A.GeneSchemaValidator.prototype.validate=function(baseline,schema){
     gene.path=P.normalizePath(gene.path);
     var start=findings.length;
     if(!gene.name||typeof gene.name!=='string')addFinding(findings,'GENE_NAME_INVALID',gene);
-    else if(names[gene.name])addFinding(findings,'GENE_NAME_DUPLICATE',gene);
-    else names[gene.name]=true;
+    else if(nameCounts[gene.name]>1)addFinding(findings,'GENE_NAME_DUPLICATE',gene);
     if(!gene.path)addFinding(findings,'GENE_PATH_INVALID',gene);
-    else if(paths[gene.path])addFinding(findings,'GENE_PATH_DUPLICATE',gene);
-    else paths[gene.path]=true;
+    else if(pathCounts[gene.path]>1)addFinding(findings,'GENE_PATH_DUPLICATE',gene);
     if(!TYPES[gene.type])addFinding(findings,'GENE_TYPE_UNSUPPORTED',gene);
     if(!P.finite(gene.mutation_rate)||gene.mutation_rate<0||gene.mutation_rate>1){
       addFinding(findings,'GENE_MUTATION_RATE_INVALID',gene);

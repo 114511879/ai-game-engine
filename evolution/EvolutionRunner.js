@@ -14,7 +14,8 @@ function validFitness(fitness){
 
 function qaPassed(qa){
   if(!qa||qa.admitted!==true)return false;
-  return!qa.semantic_qa||qa.semantic_qa.status==='passed';
+  return!!(qa.semantic_qa&&qa.semantic_qa.status==='passed'&&
+    typeof qa.semantic_qa.optimization_scope_hash==='string'&&qa.semantic_qa.optimization_scope_hash);
 }
 
 function errorData(error){
@@ -113,9 +114,10 @@ A.EvolutionRunner.prototype.runEvolution=async function(baselineDSL,options){
     schema=baselineDSL&&baselineDSL.optimization&&Array.isArray(baselineDSL.optimization.variables)
       ?P.copy(baselineDSL.optimization)
       :this.schemaBuilder.build(baselineDSL,{profile:profile.profile,engine_capability_version:options.engine_capability_version||'1.0'});
+    schema.engine_capability_version=options.engine_capability_version||schema.engine_capability_version||'1.0';
     result.optimization_scope_hash=P.scopeHash(schema);
-    var admittedScope=options.baseline_qa.semantic_qa&&options.baseline_qa.semantic_qa.optimization_scope_hash;
-    if(admittedScope&&admittedScope!==result.optimization_scope_hash){
+    var admittedScope=options.baseline_qa.semantic_qa.optimization_scope_hash;
+    if(admittedScope!==result.optimization_scope_hash){
       result.stopped_reason='optimization_scope_changed';
       return result;
     }
@@ -158,16 +160,40 @@ A.EvolutionRunner.prototype.runEvolution=async function(baselineDSL,options){
           candidate.evaluation=P.copy(options.baseline_evaluation||null);
           candidate.fitness_result=P.copy(options.baseline_fitness);
           allCandidates.push(candidate);
+          result.optimization_trace.push({
+            run_seed:runSeed,candidate_seed:candidate.candidate_seed,generation:generation,
+            candidate_id:candidate.candidate_id,parents:P.copy(candidate.parent_ids||[]),lineage:candidate.lineage,
+            gene_vector:P.copy(candidate.gene_vector),fingerprint:candidate.fingerprint||'',
+            triggered_genes:candidate.triggered_genes||0,applied_mutations:candidate.applied_mutations||0,
+            changes:P.copy(candidate.changes||[]),qa:P.copy(candidate.qa),evaluation:P.copy(candidate.evaluation),
+            fitness:P.copy(candidate.fitness_result),fitness_delta:0,status:'reused',evaluation_called:false
+          });
           continue;
         }
         if(candidate.lineage==='elite'&&validFitness(candidate.fitness_result)){
           candidate.status='reused';
           allCandidates.push(candidate);
+          result.optimization_trace.push({
+            run_seed:runSeed,candidate_seed:candidate.candidate_seed,generation:generation,
+            candidate_id:candidate.candidate_id,parents:P.copy(candidate.parent_ids||[]),lineage:candidate.lineage,
+            gene_vector:P.copy(candidate.gene_vector),fingerprint:candidate.fingerprint||'',
+            triggered_genes:candidate.triggered_genes||0,applied_mutations:candidate.applied_mutations||0,
+            changes:P.copy(candidate.changes||[]),qa:P.copy(candidate.qa),evaluation:P.copy(candidate.evaluation),
+            fitness:P.copy(candidate.fitness_result),
+            fitness_delta:fitnessValue(candidate)-options.baseline_fitness.final_fitness,
+            status:'reused',evaluation_called:false
+          });
           continue;
         }
         if(candidate.status==='duplicate_exhausted'){
           allCandidates.push(candidate);
-          result.optimization_trace.push({generation:generation,candidate_id:candidate.candidate_id,candidate_seed:candidate.candidate_seed,status:'duplicate_exhausted',gene_vector:P.copy(candidate.gene_vector),changes:P.copy(candidate.changes)});
+          result.optimization_trace.push({
+            run_seed:runSeed,candidate_seed:candidate.candidate_seed,generation:generation,
+            candidate_id:candidate.candidate_id,parents:P.copy(candidate.parent_ids||[]),lineage:candidate.lineage,
+            gene_vector:P.copy(candidate.gene_vector),fingerprint:candidate.fingerprint||'',
+            triggered_genes:candidate.triggered_genes||0,applied_mutations:candidate.applied_mutations||0,
+            changes:P.copy(candidate.changes),status:'duplicate_exhausted',evaluation_called:false
+          });
           failedCount++;
           generationFailed++;
           if(failedCount>profile.max_failed_candidates){
@@ -218,6 +244,8 @@ A.EvolutionRunner.prototype.runEvolution=async function(baselineDSL,options){
         candidate.runtime=evaluation.runtime;
         candidate.fitness_result=evaluation.fitness;
         candidate.simulation_deterministic=evaluation.simulation_deterministic===true;
+        candidate.elapsed_ms=evaluation.elapsed_ms;
+        candidate.error=evaluation.error||null;
         candidate.status=evaluation.status;
         if(evaluation.status!=='evaluated'){
           failedCount++;
@@ -226,9 +254,14 @@ A.EvolutionRunner.prototype.runEvolution=async function(baselineDSL,options){
         allCandidates.push(candidate);
         result.optimization_trace.push({
           run_seed:runSeed,candidate_seed:candidate.candidate_seed,generation:generation,
-          candidate_id:candidate.candidate_id,lineage:candidate.lineage,parent_ids:P.copy(candidate.parent_ids||[]),
-          gene_vector:P.copy(candidate.gene_vector),changes:P.copy(candidate.changes),qa:P.copy(candidate.qa),
-          evaluation:P.copy(candidate.evaluation),fitness:P.copy(candidate.fitness_result),status:candidate.status
+          candidate_id:candidate.candidate_id,parents:P.copy(candidate.parent_ids||[]),lineage:candidate.lineage,
+          gene_vector:P.copy(candidate.gene_vector),fingerprint:candidate.fingerprint||'',
+          triggered_genes:candidate.triggered_genes||0,applied_mutations:candidate.applied_mutations||0,
+          changes:P.copy(candidate.changes),qa:P.copy(candidate.qa),evaluation:P.copy(candidate.evaluation),
+          fitness:P.copy(candidate.fitness_result),
+          fitness_delta:validFitness(candidate.fitness_result)?fitnessValue(candidate)-options.baseline_fitness.final_fitness:null,
+          elapsed_ms:candidate.elapsed_ms,simulation_deterministic:candidate.simulation_deterministic,
+          error:P.copy(candidate.error),status:candidate.status,evaluation_called:true
         });
         var currentBest=bestFrom(allCandidates);
         if(currentBest){
@@ -317,6 +350,7 @@ A.EvolutionRunner.prototype.runEvolution=async function(baselineDSL,options){
       result.status='completed';
       result.stopped_reason='max_generations';
     }
+    if(result.status==='completed'&&ranked.length&&!result.best_candidate)result.status='rejected';
   }catch(error){
     result.status='failed';
     result.stopped_reason='internal_error';

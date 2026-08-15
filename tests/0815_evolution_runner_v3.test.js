@@ -56,6 +56,18 @@ assert.strictEqual(boundedMemory.all()[0].best_candidate.dsl, undefined);
 assert.strictEqual(boundedMemory.all()[0].generations[0].candidates[0].dsl, undefined);
 assert.throws(() => boundedMemory.append({run_id: '', game_id: 'g'}), /invalid_evolution_run/);
 
+const traceMemory = new A.EvolutionMemory(storageAdapter());
+traceMemory.append({
+  run_id: 'trace-budget', game_id: 'g', created_at: 1,
+  optimization_trace: [{candidate_id: 'duplicate', status: 'duplicate_exhausted', evaluation_called: false}].concat(
+    Array.from({length: 18}, (_value, index) => ({candidate_id: 'evaluated-' + index, status: 'evaluated', evaluation_called: true}))
+  )
+});
+const persistedTrace = traceMemory.get('trace-budget').optimization_trace;
+assert.strictEqual(persistedTrace.filter(entry => entry.evaluation_called === true).length, 18);
+assert(persistedTrace.some(entry => entry.candidate_id === 'duplicate'));
+assert(persistedTrace.some(entry => entry.candidate_id === 'evaluated-17'));
+
 const baselineDsl = {
   meta: {game_id: 'game-1', game_type: 'runner'},
   player: {hp: 3},
@@ -77,6 +89,9 @@ function candidate(generation, index, hp, lineage, status) {
     lineage,
     status,
     gene_vector: [{path: 'player.hp', value: hp}],
+    fingerprint: 'genes:' + hp,
+    triggered_genes: hp === 3 ? 0 : 1,
+    applied_mutations: hp === 3 ? 0 : 1,
     changes: hp === 3 ? [] : [{name: 'hp', path: 'player.hp', old: 3, new: hp, importance: 'high'}]
   };
 }
@@ -144,9 +159,31 @@ async function run() {
     (await preconditionRunner.runEvolution(baselineDsl, {baseline_fitness: baselineFitness})).stopped_reason,
     'baseline_qa_required'
   );
+  assert.strictEqual(
+    (await preconditionRunner.runEvolution(baselineDsl, {
+      baseline_fitness: baselineFitness,
+      baseline_qa: {admitted: true}
+    })).stopped_reason,
+    'baseline_qa_required'
+  );
+  assert.strictEqual(
+    (await preconditionRunner.runEvolution(baselineDsl, {
+      baseline_fitness: baselineFitness,
+      baseline_qa: {admitted: true, semantic_qa: {status: 'passed'}}
+    })).stopped_reason,
+    'baseline_qa_required'
+  );
   const changedScopeQa = {admitted: true, semantic_qa: {status: 'passed', optimization_scope_hash: 'ga3:changed'}};
   assert.strictEqual(
     (await preconditionRunner.runEvolution(baselineDsl, {baseline_fitness: baselineFitness, baseline_qa: changedScopeQa})).stopped_reason,
+    'optimization_scope_changed'
+  );
+  assert.strictEqual(
+    (await preconditionRunner.runEvolution(baselineDsl, {
+      baseline_fitness: baselineFitness,
+      baseline_qa: baselineQa,
+      engine_capability_version: '2.0'
+    })).stopped_reason,
     'optimization_scope_changed'
   );
 
@@ -194,6 +231,7 @@ async function run() {
           fitness: {schema_version: '2.0', final_fitness: 0.5 + fitnessSequence * 0.01, confidence: {overall: 0.8}},
           simulation_deterministic: true,
           elapsed_ms: 1,
+          error: null,
           dslHp: dsl.player.hp
         };
       }
@@ -221,6 +259,37 @@ async function run() {
   assert.strictEqual(restoreCalls, 1);
   assert.strictEqual(memory.all().length, 1);
   assert.strictEqual(memory.all()[0].best_candidate.dsl, undefined);
+  const evaluatedTrace = result.optimization_trace.find(entry => entry.candidate_id === 'g0-c1');
+  assert.strictEqual(evaluatedTrace.evaluation_called, true);
+  assert.strictEqual(evaluatedTrace.fingerprint, result.generations[0].candidates[1].fingerprint);
+  assert.strictEqual(evaluatedTrace.triggered_genes, result.generations[0].candidates[1].triggered_genes);
+  assert.strictEqual(evaluatedTrace.applied_mutations, result.generations[0].candidates[1].applied_mutations);
+  assert.strictEqual(evaluatedTrace.elapsed_ms, 1);
+  assert.strictEqual(evaluatedTrace.simulation_deterministic, true);
+  assert.strictEqual(evaluatedTrace.error, null);
+  assert.strictEqual(
+    evaluatedTrace.fitness_delta,
+    evaluatedTrace.fitness.final_fitness - baselineFitness.final_fitness
+  );
+
+  let rejectedFitnessSequence = 0;
+  const finalQaRejectedRunner = createRunner({
+    finalQA: {validate() { return {admitted: false, findings: [{code: 'FINAL_QA_REJECTED'}]}; }},
+    evaluator: {async evaluate() {
+      rejectedFitnessSequence++;
+      return {
+        status: 'evaluated', qa: {admitted: true}, evaluation: {status: 'completed'}, runtime: {},
+        fitness: {schema_version: '2.0', final_fitness: 0.5 + rejectedFitnessSequence * 0.01, confidence: {overall: 0.8}},
+        simulation_deterministic: true, elapsed_ms: 1, error: null
+      };
+    }}
+  });
+  const finalQaRejected = await finalQaRejectedRunner.runEvolution(baselineDsl, {
+    baseline_version: 'v1', baseline_fitness: baselineFitness, baseline_qa: baselineQa, random_seed: 'run'
+  });
+  assert.strictEqual(finalQaRejected.status, 'rejected');
+  assert.strictEqual(finalQaRejected.stopped_reason, 'max_generations');
+  assert.strictEqual(finalQaRejected.best_candidate, null);
 
   const controller = new AbortController();
   const cancelledOrder = [];

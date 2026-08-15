@@ -69,6 +69,26 @@ assert(invalid.findings.some(finding => finding.code === 'GENE_NAME_DUPLICATE'))
 assert(invalid.findings.some(finding => finding.code === 'GENE_ENUM_VALUES_INVALID'));
 assert.strictEqual(invalid.status, 'no_valid_genes');
 
+const duplicateNames = new A.GeneSchemaValidator().validate(
+  {left: 1, right: 2},
+  {immutable: [], variables: [
+    {name: 'duplicate', path: 'left', type: 'integer', range: [0, 5], step: 1, mutation_rate: 0.1},
+    {name: 'duplicate', path: 'right', type: 'integer', range: [0, 5], step: 1, mutation_rate: 0.1}
+  ]}
+);
+assert.strictEqual(duplicateNames.valid_genes.length, 0, 'every declaration with a duplicate name must be rejected');
+assert.strictEqual(duplicateNames.findings.filter(finding => finding.code === 'GENE_NAME_DUPLICATE').length, 2);
+
+const duplicatePaths = new A.GeneSchemaValidator().validate(
+  {value: 1},
+  {immutable: [], variables: [
+    {name: 'first', path: 'value', type: 'integer', range: [0, 5], step: 1, mutation_rate: 0.1},
+    {name: 'second', path: 'value', type: 'integer', range: [0, 5], step: 1, mutation_rate: 0.1}
+  ]}
+);
+assert.strictEqual(duplicatePaths.valid_genes.length, 0, 'every declaration with a duplicate path must be rejected');
+assert.strictEqual(duplicatePaths.findings.filter(finding => finding.code === 'GENE_PATH_DUPLICATE').length, 2);
+
 const offGrid = new A.GeneSchemaValidator().validate(
   {value: 4},
   {immutable: [], variables: [{name: 'value', path: 'value', type: 'integer', range: [0, 10], step: 3, mutation_rate: 0.1}]}

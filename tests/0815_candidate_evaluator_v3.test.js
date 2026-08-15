@@ -146,6 +146,48 @@ async function run() {
   assert.strictEqual(timeoutResult.status, 'timeout');
   assert.deepStrictEqual(timeoutCalls, ['qa', 'reset', 'load', 'simulation', 'teardown', 'reset']);
 
+  const slowQaCalls = [];
+  const slowQa = new A.CandidateEvaluator({
+    finalQA: {async validate() {
+      slowQaCalls.push('qa_started');
+      await new Promise(resolve => setTimeout(resolve, 15));
+      slowQaCalls.push('qa_finished');
+      return {admitted: true, findings: []};
+    }},
+    engine: {
+      reset() { slowQaCalls.push('reset'); },
+      load() { slowQaCalls.push('load'); },
+      teardown() { slowQaCalls.push('teardown'); }
+    },
+    simulation: {run() { throw new Error('timed out QA must not admit the Engine'); }},
+    fitnessFactory() { throw new Error('fitness must not run'); }
+  });
+  const slowQaResult = await slowQa.evaluate(validDsl, {timeout_ms: 5});
+  assert.strictEqual(slowQaResult.status, 'timeout');
+  assert.deepStrictEqual(slowQaCalls, ['qa_started', 'qa_finished']);
+
+  const ignoringAbortCalls = [];
+  const ignoringAbort = new A.CandidateEvaluator({
+    finalQA: {validate() { return {admitted: true, findings: []}; }},
+    engine: {
+      reset() { ignoringAbortCalls.push('reset'); },
+      load() { ignoringAbortCalls.push('load'); },
+      teardown() { ignoringAbortCalls.push('teardown'); }
+    },
+    simulation: {async run() {
+      ignoringAbortCalls.push('simulation_started');
+      await new Promise(resolve => setTimeout(resolve, 15));
+      ignoringAbortCalls.push('simulation_finished');
+      return A.AgentProtocols.evaluationResult({episodes: 1});
+    }},
+    fitnessFactory() { throw new Error('timed out simulation must not calculate fitness'); }
+  });
+  const ignoringAbortResult = await ignoringAbort.evaluate(validDsl, {timeout_ms: 5});
+  assert.strictEqual(ignoringAbortResult.status, 'timeout');
+  assert.deepStrictEqual(ignoringAbortCalls, [
+    'reset', 'load', 'simulation_started', 'simulation_finished', 'teardown', 'reset'
+  ]);
+
   const invalidFitness = new A.CandidateEvaluator({
     finalQA: {validate() { return {admitted: true, findings: []}; }},
     engine: {reset() {}, load() {}, teardown() {}},

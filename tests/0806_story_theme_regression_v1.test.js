@@ -6,7 +6,11 @@ const vm = require('vm');
 const sandbox = { console, Date, JSON, Math };
 sandbox.window = sandbox;
 sandbox.AGE = {};
-sandbox.document = { addEventListener() {} };
+const listeners = {keydown: new Set(), keyup: new Set()};
+sandbox.document = {
+  addEventListener(type, handler) { if (listeners[type]) listeners[type].add(handler); },
+  removeEventListener(type, handler) { if (listeners[type]) listeners[type].delete(handler); }
+};
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../plugins/story/StoryPlugin.js'), 'utf8'), sandbox, { filename: 'StoryPlugin.js' });
 
@@ -39,5 +43,15 @@ assert(!custom._ev.map(event => [event.ch, event.b, event.x, event.q].join(' '))
 const preset = load(plugin.preset);
 const presetText = preset._ev.map(event => event.x || event.q || event.ch || '').join(' ');
 assert(presetText.includes('黄巾军'), 'manual Three Kingdoms preset must remain available');
+
+const listenersBeforeCleanupLoad = {keydown: listeners.keydown.size, keyup: listeners.keyup.size};
+const cleanupEngine = load(plugin.preset);
+assert.strictEqual(listeners.keydown.size, listenersBeforeCleanupLoad.keydown + 1);
+assert.strictEqual(listeners.keyup.size, listenersBeforeCleanupLoad.keyup + 1);
+plugin.onUnload(cleanupEngine);
+assert.strictEqual(listeners.keydown.size, listenersBeforeCleanupLoad.keydown);
+assert.strictEqual(listeners.keyup.size, listenersBeforeCleanupLoad.keyup);
+assert.strictEqual(cleanupEngine._storyKeydownHandler, null);
+assert.strictEqual(cleanupEngine._storyKeyupHandler, null);
 
 console.log('story theme regression tests passed');

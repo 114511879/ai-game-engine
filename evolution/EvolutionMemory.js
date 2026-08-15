@@ -4,6 +4,7 @@ var A=window.AGE=window.AGE||{};
 var KEY='age_evolution_memory_v3';
 var MAX_RUNS=50;
 var MAX_TRACE=18;
+var MAX_AUXILIARY_TRACE=18;
 
 function copy(value){return value===undefined?undefined:JSON.parse(JSON.stringify(value));}
 
@@ -33,7 +34,18 @@ A.EvolutionMemory.prototype.all=function(){
 A.EvolutionMemory.prototype.append=function(run){
   if(!valid(run))throw new Error('invalid_evolution_run');
   var normalized=stripDsl(copy(run));
-  if(Array.isArray(normalized.optimization_trace))normalized.optimization_trace=normalized.optimization_trace.slice(0,MAX_TRACE);
+  if(Array.isArray(normalized.optimization_trace)){
+    var evaluatorRows=0;
+    var auxiliaryRows=0;
+    normalized.optimization_trace=normalized.optimization_trace.filter(function(entry){
+      if(entry&&entry.evaluation_called===true){
+        evaluatorRows++;
+        return evaluatorRows<=MAX_TRACE;
+      }
+      auxiliaryRows++;
+      return auxiliaryRows<=MAX_AUXILIARY_TRACE;
+    });
+  }
   var rows=this.all();
   rows.push(normalized);
   rows.sort(function(a,b){return(Number(a.created_at)||0)-(Number(b.created_at)||0);});

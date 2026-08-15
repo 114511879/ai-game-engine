@@ -888,7 +888,8 @@ A.GameDirector.prototype.runDirectorLoop = async function(userPrompt,intentDSL) 
 // ══════════════════════════════════════════
 A.GameDirector.prototype.runEvolution = async function(baselineDSL, options) {
   options = options || {};
-  if (options.enabled !== true) {
+  var dslEvolutionEnabled = !!(baselineDSL && baselineDSL.evolution && baselineDSL.evolution.enabled === true);
+  if (options.enabled !== true && !dslEvolutionEnabled) {
     return {
       success: true,
       status: 'completed',

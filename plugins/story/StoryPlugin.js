@@ -1339,10 +1339,19 @@ var storyHay=((d&&d.meta&&d.meta.title)||'')+' '+((d&&d.world&&d.world.theme)||'
 e._horrorStory=/horror|恐怖|惊悚|迷雾|鬼|怪物|modern_horror/i.test(storyHay)||(d&&d.meta&&d.meta.game_type==='horror');
 e._bgid=0;e._dec=[];e._fame=30;e._gold=0;e._alive=1;
 s._sh(e);
-document.addEventListener('keydown',function(ev){var k=(ev.key||ev.code||'').toLowerCase();
+s.onUnload(e);
+e._storyKeydownHandler=function(ev){var k=(ev.key||ev.code||'').toLowerCase();
 if(e._inp===1){ev.preventDefault();if(k==='enter'){if(!e._nm)e._nm='无名';e._inp=0;e._i=e._nc+1;e._nc=-1;s._sh(e);}else if(k==='backspace')e._nm=e._nm.slice(0,-1);else if(k.length===1&&e._nm.length<6)e._nm+=k;return;}
-if(k==='1'||k==='2'||k==='3'||k==='4')e._k[k]=1;if(k===' '||k==='space')e._k.sp=1;});
-document.addEventListener('keyup',function(ev){var k=(ev.key||ev.code||'').toLowerCase();if(k==='1'||k==='2'||k==='3'||k==='4')e._k[k]=0;if(k===' '||k==='space')e._k.sp=0;});},
+if(k==='1'||k==='2'||k==='3'||k==='4')e._k[k]=1;if(k===' '||k==='space')e._k.sp=1;};
+e._storyKeyupHandler=function(ev){var k=(ev.key||ev.code||'').toLowerCase();if(k==='1'||k==='2'||k==='3'||k==='4')e._k[k]=0;if(k===' '||k==='space')e._k.sp=0;};
+document.addEventListener('keydown',e._storyKeydownHandler);
+document.addEventListener('keyup',e._storyKeyupHandler);},
+
+onUnload:function(e){
+if(!e)return;
+if(e._storyKeydownHandler&&document.removeEventListener)document.removeEventListener('keydown',e._storyKeydownHandler);
+if(e._storyKeyupHandler&&document.removeEventListener)document.removeEventListener('keyup',e._storyKeyupHandler);
+e._storyKeydownHandler=null;e._storyKeyupHandler=null;},
 
 _sh:function(e){var v=e._ev[e._i];if(!v||e._end){e._end=1;e._ei=e._generatedStory?0:getEnding(e);return;}
 e._visits=e._visits||{};e._visits[e._i]=(e._visits[e._i]||0)+1;if(e._visits[e._i]>5){e._end=1;e._ei=getEnding(e);return;}

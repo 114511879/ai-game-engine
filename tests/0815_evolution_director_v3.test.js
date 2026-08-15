@@ -51,6 +51,18 @@ async function run() {
   assert.strictEqual(runnerCalls, 0);
   assert.strictEqual(promoterCalls, 0);
 
+  let dslOptInCalls = 0;
+  const dslOptInDirector = new A.GameDirector({
+    evolutionRunner: {async runEvolution(receivedDsl) {
+      dslOptInCalls++;
+      assert.strictEqual(receivedDsl.evolution.enabled, true);
+      return {status: 'completed', stopped_reason: 'max_generations', best_candidate: null, promotion: {status: 'not_requested'}};
+    }}
+  });
+  const dslOptIn = Object.assign({}, baselineDsl, {evolution: {enabled: true, profile: 'default_ga_v3'}});
+  await dslOptInDirector.runEvolution(dslOptIn, {});
+  assert.strictEqual(dslOptInCalls, 1, 'DSL evolution.enabled must explicitly opt in to EvolutionRunner');
+
   const result = await director.runEvolution(baselineDsl, {
     enabled: true,
     baseline_version: 'v1',
