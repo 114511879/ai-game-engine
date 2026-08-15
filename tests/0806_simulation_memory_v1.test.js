@@ -47,6 +47,13 @@ data.age_simulation_memory_v1 = '{invalid';
 assert.deepStrictEqual(Array.from(memory.all()), []);
 assert.strictEqual(data.age_conversations_v10, 'keep');
 
+const rawSnapshot = memory.snapshot();
+data.age_simulation_memory_v1 = JSON.stringify([{run_id: 'changed', game_id: 'g', version_id: 'v2'}]);
+memory.restore(rawSnapshot);
+assert.strictEqual(data.age_simulation_memory_v1, rawSnapshot);
+memory.restore(null);
+assert.strictEqual(Object.prototype.hasOwnProperty.call(data, 'age_simulation_memory_v1'), false);
+
 async function run() {
   const episodeSeeds = [];
   const agent = new sandbox.AGE.SimulationAgent({
