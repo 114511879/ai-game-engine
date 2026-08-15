@@ -14,6 +14,7 @@ const {chromium}=require('playwright');
     const result=system.includes('AI游戏顾问')?{intent:{},ready:false,summary:'继续澄清'}:{meta:{game_type:'tower_defense',title:'顾问防线'},player:{hp:12},rules:{win_condition:'defend_waves',win_value:5},world:{theme:'sci_fi'},tower_defense:{waves:5,slots:6,starting_gold:45}};
     await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({choices:[{message:{content:JSON.stringify(result)}}]})});
   });
+  await page.addInitScript(()=>localStorage.setItem('age.deepseek_api_key','test-key'));
   await page.goto('http://127.0.0.1:4173/');
   await page.waitForURL(/AI-ENGINE/);
   await page.evaluate(()=>localStorage.clear());

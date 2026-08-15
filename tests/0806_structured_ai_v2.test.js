@@ -52,6 +52,7 @@ function load(file) {
 
 load('core/dsl/Config.js');
 load('ai/generator/AIGenerator.js');
+sandbox.AGE.API_KEY = 'test-key';
 
 async function run() {
   const result = await sandbox.AGE.callStructuredAI('system', 'user', {
@@ -60,7 +61,7 @@ async function run() {
     retry_on_length: true,
     max_retry_tokens: 6000
   });
-  assert(result, 'truncated responses should be retried');
+  assert(result, 'truncated responses should be retried: '+JSON.stringify(sandbox.AGE.lastAIError));
   assert.strictEqual(result.proposal.ok, true);
   assert.strictEqual(fetchCount, 2);
   assert(requestBodies[1].max_tokens > requestBodies[0].max_tokens);
