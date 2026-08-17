@@ -41,6 +41,7 @@ const { chromium } = require('playwright');
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }) });
     });
 
+    await page.addInitScript(()=>localStorage.setItem('age.deepseek_api_key','test-key'));
     await page.goto('http://127.0.0.1:4173/');
     await page.waitForURL(/AI-ENGINE/);
     await page.evaluate(() => localStorage.clear());

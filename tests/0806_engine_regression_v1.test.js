@@ -137,4 +137,17 @@ agent.update();
 assert(usedSkills.includes('shield'), 'progress mode must defend against boss projectiles');
 assert.strictEqual(agent.generateReport().progress.bossSeen, true);
 
+let testerStops = 0;
+let pluginUnloads = 0;
+engine.playTester = {stop() { testerStops++; }};
+engine.plugin = {onUnload(target) { assert.strictEqual(target, engine); pluginUnloads++; }};
+engine._projectiles = [{hp: 1}];
+engine._onBossDefeated = function() {};
+engine.teardown();
+assert.strictEqual(testerStops, 1);
+assert.strictEqual(pluginUnloads, 1);
+assert.strictEqual(engine.playTester, null);
+assert.deepStrictEqual(Array.from(engine._projectiles), []);
+assert.strictEqual(engine._onBossDefeated, null);
+
 console.log('engine regression tests passed');

@@ -37,6 +37,15 @@ A.SimulationMemory.prototype.append=function(record){
   return safe;
 };
 
+A.SimulationMemory.prototype.snapshot=function(){
+  return this.storage.getItem(STORAGE_KEY);
+};
+
+A.SimulationMemory.prototype.restore=function(raw){
+  if(raw===null||raw===undefined)this.storage.removeItem(STORAGE_KEY);
+  else this.storage.setItem(STORAGE_KEY,raw);
+};
+
 A.SimulationMemory.prototype.history=function(gameId,persona){
   return this.all().filter(function(record){
     return record.game_id===gameId&&(!persona||record.persona===persona);

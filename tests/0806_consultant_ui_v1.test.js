@@ -15,6 +15,7 @@ const {chromium} = require('playwright');
       : {meta:{game_type:'dungeon',title:'深夜追猎'},player:{hp:8},rules:{win_condition:'boss_kill',win_value:1},skills:[{name:'fireball',type:'attack',damage:25,cooldown:30},{name:'shield',type:'defense',cooldown:80}],world:{theme:'dark'},entities:{boss:{name:'追猎者',hp:350}},levels:[{name:'逃生通道',map:{rooms:[{type:'enemy'}]}},{name:'追猎巢穴',map:{rooms:[{type:'boss'}]}}]};
     await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({choices:[{message:{content:JSON.stringify(result)}}]})});
   });
+  await page.addInitScript(()=>localStorage.setItem('age.deepseek_api_key','test-key'));
   await page.goto('http://127.0.0.1:4173/');
   await page.waitForURL(/AI-ENGINE/);
   await page.evaluate(()=>localStorage.clear());

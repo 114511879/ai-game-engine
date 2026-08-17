@@ -47,9 +47,18 @@ data.age_simulation_memory_v1 = '{invalid';
 assert.deepStrictEqual(Array.from(memory.all()), []);
 assert.strictEqual(data.age_conversations_v10, 'keep');
 
+const rawSnapshot = memory.snapshot();
+data.age_simulation_memory_v1 = JSON.stringify([{run_id: 'changed', game_id: 'g', version_id: 'v2'}]);
+memory.restore(rawSnapshot);
+assert.strictEqual(data.age_simulation_memory_v1, rawSnapshot);
+memory.restore(null);
+assert.strictEqual(Object.prototype.hasOwnProperty.call(data, 'age_simulation_memory_v1'), false);
+
 async function run() {
+  const episodeSeeds = [];
   const agent = new sandbox.AGE.SimulationAgent({
-    async episodeRunner(_engine, persona, index) {
+    async episodeRunner(_engine, persona, index, options) {
+      episodeSeeds.push(options.seed);
       return {
         persona,
         play_time: 100 + index,
@@ -61,13 +70,20 @@ async function run() {
       };
     }
   });
-  const evaluation = await agent.run({}, {persona: 'new_player', episodes: 3, simulation_id: 'sim-1'});
+  const evaluation = await agent.run({}, {persona: 'new_player', episodes: 3, simulation_id: 'sim-1', seed: 'candidate', deterministic: true});
   assert.strictEqual(evaluation.schema_version, '1.0');
   assert.strictEqual(evaluation.episodes, 3);
   assert.strictEqual(evaluation.metrics.death_rate, 1 / 3);
   assert.strictEqual(evaluation.metrics.completion_rate, 2 / 3);
   assert.strictEqual(evaluation.bugs.length, 1);
   assert(evaluation.reward > 0);
+  assert.strictEqual(evaluation.simulation_deterministic, true);
+  assert.deepStrictEqual(episodeSeeds, ['candidate:episode0', 'candidate:episode1', 'candidate:episode2']);
+
+  await assert.rejects(
+    () => agent.run({}, {signal: {aborted: true}}),
+    error => error && error.name === 'AbortError'
+  );
 
   let observedEngine = null;
   sandbox.AGE.AITestAgent = function(engine) {

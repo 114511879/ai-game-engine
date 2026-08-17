@@ -76,6 +76,8 @@ A.GameDirector = function(options) {
   this._simulationMemory = options.simulationMemory || null;
   this._fitnessCalculator = options.fitnessCalculator || null;
   this._runtimeMetrics = options.runtimeMetrics || null;
+  this._evolutionRunner = options.evolutionRunner || null;
+  this._evolutionPromoter = options.evolutionPromoter || null;
   this.evaluation = null;
   this.fitness = null;
 };
@@ -882,7 +884,92 @@ A.GameDirector.prototype.runDirectorLoop = async function(userPrompt,intentDSL) 
 };
 
 // ══════════════════════════════════════════
-// 五、辅助方法
+// 五、显式遗传进化入口
+// ══════════════════════════════════════════
+A.GameDirector.prototype.runEvolution = async function(baselineDSL, options) {
+  options = options || {};
+  var dslEvolutionEnabled = !!(baselineDSL && baselineDSL.evolution && baselineDSL.evolution.enabled === true);
+  if (options.enabled !== true && !dslEvolutionEnabled) {
+    return {
+      success: true,
+      status: 'completed',
+      stopped_reason: 'not_requested',
+      dsl: baselineDSL,
+      promotion: {status: 'not_requested'}
+    };
+  }
+  if (!this._evolutionRunner || typeof this._evolutionRunner.runEvolution !== 'function') {
+    return {
+      success: false,
+      status: 'failed',
+      stopped_reason: 'internal_error',
+      dsl: baselineDSL,
+      promotion: {status: 'failed', reason: 'evolution_runner_unavailable'}
+    };
+  }
+
+  this._status('Evolution开始...', '');
+  var evolution;
+  try {
+    evolution = await this._evolutionRunner.runEvolution(baselineDSL, options);
+  } catch (error) {
+    evolution = {
+      status: 'failed',
+      stopped_reason: 'internal_error',
+      error: {name: error.name || 'Error', message: error.message || String(error)},
+      promotion: {status: 'not_requested'}
+    };
+  }
+  evolution = evolution || {status: 'failed', stopped_reason: 'internal_error'};
+  var promotion = evolution.promotion || {status: 'not_requested'};
+
+  if (evolution.stopped_reason === 'cancelled' || evolution.status !== 'completed' || !evolution.best_candidate) {
+    evolution.success = evolution.status === 'completed';
+    evolution.dsl = baselineDSL;
+    evolution.promotion = {status: 'not_requested'};
+    this._status('Evolution结束: ' + evolution.stopped_reason, evolution.status === 'failed' ? 'error' : '');
+    return evolution;
+  }
+  if (!this._evolutionPromoter || typeof this._evolutionPromoter.promote !== 'function') {
+    evolution.success = false;
+    evolution.dsl = baselineDSL;
+    evolution.promotion = {status: 'failed', reason: 'evolution_promoter_unavailable'};
+    this._status('Evolution Promotion不可用', 'error');
+    return evolution;
+  }
+
+  try {
+    promotion = await this._evolutionPromoter.promote({
+      run_id: evolution.run_id || options.run_id || options.random_seed || '',
+      game_id: evolution.game_id || options.game_id || baselineDSL && baselineDSL.meta && baselineDSL.meta.game_id || '',
+      baseline: {version_id: options.baseline_version || evolution.baseline && evolution.baseline.version_id || '', dsl: baselineDSL},
+      winner: evolution.best_candidate,
+      ranked_candidates: evolution.ranked_candidates || [],
+      intent: options.intent,
+      blueprint: options.blueprint
+    });
+  } catch (promotionError) {
+    promotion = {
+      status: 'failed',
+      reason: 'promotion_internal_error',
+      error: {name: promotionError.name || 'Error', message: promotionError.message || String(promotionError)}
+    };
+  }
+  evolution.promotion = promotion;
+  if (promotion && promotion.status === 'promoted') {
+    evolution.success = true;
+    evolution.dsl = promotion.dsl || evolution.best_candidate.dsl;
+    this.bestDSL = evolution.dsl;
+    this._status('Evolution已晋升: ' + promotion.promoted_version_id, 'success');
+  } else {
+    evolution.success = false;
+    evolution.dsl = baselineDSL;
+    this._status('Evolution Promotion失败', 'error');
+  }
+  return evolution;
+};
+
+// 六、辅助方法
 // ══════════════════════════════════════════
 A.GameDirector.prototype._log = function(msg) {
   console.log('[Director] ' + msg);
