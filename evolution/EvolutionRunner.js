@@ -235,6 +235,8 @@ A.EvolutionRunner.prototype.runEvolution=async function(baselineDSL,options){
           trend:options.trend||{},
           blueprint_metadata:options.blueprint_metadata,
           deterministic:options.deterministic===true,
+          playtest_enabled:options.playtest_enabled===true,
+          playtest_options:options.playtest_options||{},
           signal:options.signal
         });
         evaluatedCount++;

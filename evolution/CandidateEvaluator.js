@@ -19,6 +19,7 @@ A.CandidateEvaluator=function(dependencies){
   this.finalQA=dependencies.finalQA;
   this.engine=dependencies.engine;
   this.simulation=dependencies.simulation;
+  this.playtest=dependencies.playtest||null;
   this.fitnessFactory=dependencies.fitnessFactory||function(options){return new A.FitnessCalculator(options);};
   this.clock=dependencies.clock||function(){return Date.now();};
   this.createAbortController=dependencies.createAbortController||function(){return new AbortController();};
@@ -99,6 +100,7 @@ A.CandidateEvaluator.prototype.evaluate=async function(candidateDSL,options){
 
   var evaluation=null;
   var fitness=null;
+  var playtest=null;
   var runtime=options.runtime_metrics||{};
   var resultStatus='failed';
   var failure=null;
@@ -130,6 +132,23 @@ A.CandidateEvaluator.prototype.evaluate=async function(candidateDSL,options){
       throw fitnessError;
     }
     resultStatus='evaluated';
+    if(options.playtest_enabled===true){
+      playtest={enabled:true,status:'not_run',reason:'playtest_unavailable'};
+      if(this.playtest&&typeof this.playtest.evaluate==='function'){
+        try{
+          await Promise.resolve(this.engine.teardown());
+          await Promise.resolve(this.engine.reset());
+          if(options.signal&&options.signal.aborted){
+            playtest={enabled:true,status:'cancelled',reason:'cancelled_before_playtest'};
+          }else{
+            playtest=await Promise.resolve(this.playtest.evaluate(candidateDSL,Object.assign({},options.playtest_options||{},
+              {candidate_id:options.candidate_id||'',candidate_seed:options.candidate_seed||'',signal:options.signal,game_id:options.game_id||''})));
+          }
+        }catch(playtestError){
+          playtest={enabled:true,status:'incomplete',reason:playtestError.code||playtestError.message||'playtest_failed'};
+        }
+      }
+    }
   }catch(error){
     failure=error;
     if(timedOut)resultStatus='timeout';
@@ -142,7 +161,7 @@ A.CandidateEvaluator.prototype.evaluate=async function(candidateDSL,options){
     if(failure&&resultStatus==='evaluated')resultStatus='failed';
   }
 
-  return{
+  var output={
     status:resultStatus,
     qa:qa,
     evaluation:evaluation,
@@ -152,5 +171,7 @@ A.CandidateEvaluator.prototype.evaluate=async function(candidateDSL,options){
     elapsed_ms:Math.max(0,this.clock()-started),
     error:errorData(failure)
   };
+  if(playtest)output.playtest=playtest;
+  return output;
 };
 })();
