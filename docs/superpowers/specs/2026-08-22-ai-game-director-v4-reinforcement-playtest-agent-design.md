@@ -37,10 +37,11 @@ PlayTestReward   -> QLearningTrainer -> Policy Candidate -> PolicyPromoter   -> 
 
 1. A run freezes one Policy snapshot. Policy learning occurs only after safe run close.
 2. All randomness uses the shared versioned V3/V4 SeededPRNG primitive: UTF-8 seed -> FNV-1a 32-bit -> Mulberry32. Bare `Math.random()` is forbidden in deterministic modules.
-3. The same Policy, schemas, Engine configuration, scenario, and seed produce the same state IDs, actions, findings, fingerprints, replay decisions, reward ledger, Q-table, and Policy hash.
-4. Candidate experiments and official versions have separate histories. V4 learning history and executable Policy versions also have separate histories.
-5. Every Engine action path releases inputs and cleans resources in `finally`.
-6. V4 failure cannot overwrite V3 Fitness, GA ranking, `current_version`, or the existing active Policy.
+3. Evaluation determinism is scoped to `Policy + schemas + scenario + Engine configuration + seed`, which must produce the same state IDs, selected actions, findings, fingerprints, replay decisions, and finalized Reward Ledger. Wall-clock timeout remains a safety boundary; identical completion across machines is not promised when machine performance differs.
+4. Training determinism is scoped to `parent Policy + immutable Dataset Snapshot + Training Profile + Training Seed`, which must produce the same Q-table and Policy hash.
+5. Candidate experiments and official versions have separate histories. V4 learning history and executable Policy versions also have separate histories.
+6. Every Engine action path releases inputs and cleans resources in `finally`.
+7. V4 failure cannot overwrite V3 Fitness, GA ranking, `current_version`, or the existing active Policy.
 
 ## 4. Layered architecture
 
@@ -242,7 +243,7 @@ A Finding is independent of Reward:
   "status": "provisional",
   "category": "physics",
   "severity": "high",
-  "first_seen_transition": 41,
+  "first_seen_transition": 17,
   "trigger": {"state_id": "...", "action_id": "EDGE_PRESSURE"},
   "bug_fingerprint": "bug:xxxxxxxx"
 }
@@ -334,19 +335,23 @@ At safe run close, the Ledger is finalized, Replay results are complete as far a
 ```json
 {
   "policy_store": {
-    "max_active_versions": 10,
-    "max_training_runs": 50,
+    "max_retained_promoted_versions": 10,
     "retain_rejected_metadata": true,
     "retain_rejected_q_table": false,
     "rollback_mode": "explicit_active_version",
     "official_version_requires_hash": true
+  },
+  "training_memory": {
+    "max_training_runs": 50
   }
 }
 ```
 
-`PolicyStore` holds one `current_active`, up to ten retained promoted versions, a temporary candidate, rejected metadata, and activation/rollback lineage. Formal Policies retain the complete Q-table and a canonical hash computed from Q-table, compatibility metadata, training profile/version, and Policy schema version. Audit metadata is excluded from the hash.
+`PolicyStore` holds one `current_active`, up to ten retained promoted versions, a temporary candidate, rejected metadata, and activation/rollback lineage. `max_retained_promoted_versions` does not mean that ten Policies are active; exactly one Policy can be `current_active`. Formal Policies retain the complete Q-table and a canonical hash computed from Q-table, compatibility metadata, training profile/version, and Policy schema version. Audit metadata is excluded from the hash.
 
-`TrainingMemory` holds immutable Dataset Snapshots, Training Runs, reproducibility results, validation scorecards, and Promotion Decisions. Its retention is independent from PolicyStore. Rejected Q-tables are discarded after metadata is persisted. Policy states are `candidate`, `active`, `superseded`, and `rejected`.
+`TrainingMemory` holds immutable Dataset Snapshots, Training Runs, reproducibility results, validation scorecards, and Promotion Decisions. Its retention is independent from PolicyStore and is governed by `training_memory.max_training_runs`. Rejected Q-tables are discarded after metadata is persisted. Policy states are `candidate`, `active`, `superseded`, and `rejected`.
+
+`no_improvement` is a validation decision, not a Policy state. It leaves the active Policy unchanged, persists the decision in TrainingMemory, clears the candidate Q-table, and does not create rejected Policy metadata. A candidate that fails a hard gate or non-regression constraint is `rejected` and retains only its rejection metadata.
 
 Rollback requires an explicit retained version, valid hash, and current compatibility. It restores that Policy's own epsilon and does not decay epsilon or retrain. The current active Policy is never guessed or overwritten.
 
@@ -385,9 +390,15 @@ Validation uses a fixed holdout set that is never added to ReplayBuffer or Train
 }
 ```
 
-`ValidationRunner` executes Active and Candidate in the same Validation Run, with the same scenarios, seeds, Engine version, Rule Registry, schemas, budgets, and Reward Profile. `PolicyValidator` then applies hard gates, all non-regression constraints, and lexicographic comparison. A 0/0 reproduction rate is `null`; it is not converted to 0% or 100%.
+`ValidationRunner` executes Active and Candidate in the same Validation Run, with the same scenarios, seeds, Engine version, Rule Registry, schemas, budgets, and Reward Profile. `PolicyValidator` then applies hard gates, all non-regression constraints, and lexicographic comparison. `fatal_runtime_regressions` means candidate-only newly introduced fatal failures in the paired Holdout run, not failures shared by both Policies. A 0/0 reproduction rate is `null`; it is not converted to 0% or 100%: `active=null, candidate=null` is a tie, and if only one side is `null`, that metric alone cannot decide promotion or rejection.
 
-The Candidate is validated with the prospective epsilon that would be committed after promotion. Only a strict scorecard improvement yields `promotion_eligible`; equal scorecards yield `no_improvement` even when the behavior hash differs. `PolicyPromoter` alone performs the all-or-nothing transaction and switches `current_active` at the final commit point.
+The Candidate is validated with the prospective epsilon that would be committed after promotion:
+
+```text
+proposed_epsilon = max(active.epsilon * 0.95, 0.05)
+```
+
+Validation uses that value without modifying the active Policy. Only the Promotion commit writes it. Only a strict scorecard improvement yields `promotion_eligible`; equal scorecards yield `no_improvement` even when the behavior hash differs. `PolicyPromoter` alone performs the all-or-nothing transaction and switches `current_active` at the final commit point.
 
 ## 16. V3 Integration
 
@@ -423,13 +434,25 @@ V3 and V4 are separate Evaluation Sessions. V4 begins from a fresh standard init
 }
 ```
 
-When enabled, baseline and each unique Candidate that passes deterministic FinalQA receives one Discovery Episode. Duplicates and QA-rejected candidates receive none. Elites reuse their existing result. Discovery slots are consumed when started, including incomplete Episodes. Replay runs only after all Discovery Episodes, with deterministic ordering and an independent budget.
+When enabled, baseline and each unique Candidate that passes deterministic FinalQA receives one Discovery Episode. Duplicates and QA-rejected candidates receive none. Elites reuse their existing result. Discovery slots are consumed when started, including incomplete Episodes. Replay runs only after all Discovery Episodes, with an independent budget and this strict total ordering:
+
+```text
+first_seen_transition ASC
+-> bug_fingerprint ASC
+-> candidate_id ASC
+```
+
+`candidate_id` is only a final stable tie-breaker and never contributes to a Bug fingerprint. If the Replay budget is exhausted, an unprocessed Finding remains `provisional` with `reason = replay_budget_exhausted`; it is never marked rejected.
 
 V4 data is stored in EvolutionMemory/ReplayBuffer/TrainingMemory, not SimulationMemory. V4 timeout, incomplete Replay, Reward failure, or budget exhaustion does not count toward V3 candidate failure budget and cannot change V3 ranking. V4 Finding never enters `EvaluationResult.bugs`; PlayTestReward never enters `final_fitness`.
 
 ## 17. Cancellation and Failure Safety
 
-AbortSignal checks occur before a new Generation, Candidate, deterministic QA, Simulation, Discovery Episode, Replay attempt, and Training phase. Cancellation prevents new work, safely ends the current Macro/Episode, releases inputs, restores the baseline Engine where applicable, persists completed traces, and never promotes a game or Policy.
+AbortSignal checks occur before a new Generation, Candidate, deterministic QA, Simulation, Discovery Episode, Replay attempt, and Training phase. Signals are scoped to one operation and are not reused across phases.
+
+An Evolution/PlayTest cancellation prevents new discovery or Replay work, safely ends the current Macro/Episode, releases inputs, restores the baseline Engine where applicable, persists completed traces, and closes the run. Completed, eligible samples from that safe close may enter the later Training phase; the aborted Evolution signal must not automatically cancel that separate Training operation.
+
+A Training cancellation stops the current offline training run, records a cancelled TrainingMemory entry, discards the unpromoted candidate Q-table, and leaves the active Policy unchanged. It cannot create or promote a new Policy.
 
 All failure paths preserve the previous valid state:
 
