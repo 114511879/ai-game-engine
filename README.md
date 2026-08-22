@@ -153,6 +153,18 @@ V3 增加默认关闭的遗传优化层。普通生成和普通 Director 不会�
 
 V3 不包含强化学习训练，也不替代 Director 现有的 DSL 正确性修补循环。
 
+## Reinforcement PlayTest Agent V4
+
+V4 增加默认关闭的 Bug Hunter PlayTest Agent。只有在 **🧬 进化** 面板中明确勾选 Bug Hunter PlayTest，或通过 `playtest.enabled: true` 显式调用时，才会增加 Discovery 和 Replay 成本。普通生成、普通 Director 和未启用 V4 的 V3 Evolution 保持零次 V4 调用。
+
+V4 使用离散 Core State + Game-Type Adapter、确定性的 Macro Actions、Seeded Tabular Q-Learning，以及 `Event Ledger → Replay Confirmation → Delayed Relabeling` 奖励链。Discovery Episode 最多 40 个 Macro transition、1200 个 simulation tick 和 120 秒安全超时；每个 Run 最多 18 个 Discovery Episode、24 次 Replay attempt。确定性 Replay 使用 1/1，非确定性或未知环境使用 2/3，并按 `first_seen_transition → bug_fingerprint → candidate_id` 确定顺序。
+
+V4 与 V3 的评价语义严格隔离：V3 `SimulationAgent → FitnessCalculator V2 → final_fitness` 仍是唯一 GA 排序依据；V4 Finding 不写入 `EvaluationResult.bugs`，PlayTestReward 不改变 `FitnessResult 2.0`。V4 实验数据进入 EvolutionMemory、ReplayBuffer 和 TrainingMemory，不直接进入正式 SimulationMemory。
+
+训练在 Run 安全关闭后离线执行，使用分层 Replay（`confirmed / negative_evidence / exploration`）和不可变 Dataset Snapshot。新 Policy 必须通过 Fixed Holdout、Hard Gates、Bounded Non-Regression 和 Lexicographic Improvement 才能由唯一的 `PolicyPromoter` 激活；失败、取消和 rollback 都不会覆盖现有 `current_active`。
+
+V4 的正式协议和模块边界见：[V4 Reinforcement PlayTest Agent Design](docs/superpowers/specs/2026-08-22-ai-game-director-v4-reinforcement-playtest-agent-design.md)。
+
 ## 技术栈
 
 - 前端：Canvas 2D + Vanilla JS
