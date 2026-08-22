@@ -1,5 +1,27 @@
 # AI Game Engine 更新日志
 
+## AI Game Director 4.0 - Reinforcement PlayTest Agent
+
+日期: 2026-08-22
+
+新增:
+- 默认关闭、显式启用的 Bug Hunter PlayTest 面板和状态展示
+- Core State + Game-Type Adapter、Capability-Gated Macro Actions 和 Transition-Bounded Episode
+- Versioned Deterministic Rule Registry、Normalized Bug Fingerprint 和 Seeded Replay Confirmation
+- Event Ledger、Delayed Relabeling、Confirmed/Negative/Exploration 分层 ReplayBuffer
+- Seeded Offline Tabular Q-Learning、immutable Dataset Snapshot 和 Fixed Holdout Validation
+- 独立 PolicyStore、TrainingMemory、PolicyPromoter、显式 rollback 和事务式 active Policy 提交
+- V3 CandidateEvaluator 的附加式顺序 PlayTestEvaluator 集成
+
+边界:
+- V4 默认不运行；普通 Generate、Director 和未启用 V4 的 V3 Evolution 保持兼容
+- V4 PlayTestReward 不进入 V2 `final_fitness`
+- V4 Finding 不写入 V3 `EvaluationResult.bugs`，也不自动成为 GA Promotion Gate
+- V4 失败、取消、预算耗尽或存储异常不能污染 V3 Fitness、GA ranking、`current_version` 或现有 Active Policy
+
+验证:
+- V4 focused tests、V3 compatibility tests 和 V4 release gate 已加入 `tests/`
+
 ## AI Game Director 2.0 V3 - Genetic Evolution
 
 日期: 2026-08-15

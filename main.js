@@ -114,6 +114,7 @@ var ChatUI = {
   pendingMode: 'generate',
   pendingPrompt: '',
   evolutionAbortController: null,
+  playtestTrainingAbortController: null,
 
   init: function(){
     ChatUI.bindEvents();
@@ -140,6 +141,9 @@ var ChatUI = {
     });
     document.getElementById('btnStopEvolution').addEventListener('click', function(){
       ChatUI.stopEvolution();
+    });
+    document.getElementById('btnStopPlaytestTraining').addEventListener('click', function(){
+      ChatUI.stopPlaytestTraining();
     });
     document.getElementById('btnConsultantSkip').addEventListener('click', function(){
       ChatUI.finishConsultation(true);
@@ -740,12 +744,44 @@ var ChatUI = {
   showEvolutionPanel: function(){
     var panel=document.getElementById('evolutionPanel');
     if(panel)panel.style.display='block';
+    var toggle=document.getElementById('playtestEnabled');
+    if(toggle)toggle.checked=false;
+    ChatUI.hidePlaytestPanel();
     ChatUI.updateEvolutionPanel({stage:'baseline',generation:0,candidate_id:'',progress:0});
   },
 
   hideEvolutionPanel: function(){
     var panel=document.getElementById('evolutionPanel');
     if(panel)panel.style.display='none';
+    ChatUI.hidePlaytestPanel();
+  },
+
+  showPlaytestPanel: function(){
+    var panel=document.getElementById('playtestPanel');
+    if(panel)panel.style.display='block';
+  },
+
+  hidePlaytestPanel: function(){
+    var panel=document.getElementById('playtestPanel');
+    if(panel)panel.style.display='none';
+  },
+
+  updatePlaytestPanel: function(status){
+    status=status||{};
+    var panel=document.getElementById('playtestPanel');
+    if(panel&&status.enabled!==false)panel.style.display='block';
+    var statusEl=document.getElementById('playtestStatus');
+    if(statusEl&&status.status)statusEl.textContent=status.status;
+    var policy=document.getElementById('playtestPolicyVersion');
+    if(policy&&status.policy_version)policy.textContent=status.policy_version;
+    var discovery=document.getElementById('playtestDiscoveryProgress');
+    if(discovery&&status.discovery)discovery.textContent=(status.discovery.episodes_started||0)+' / '+(status.discovery.limit||18);
+    var replay=document.getElementById('playtestReplayProgress');
+    if(replay&&status.replay)replay.textContent=(status.replay.attempts_run||0)+' / '+(status.replay.limit||24);
+    var findings=document.getElementById('playtestFindingSummary');
+    if(findings&&status.replay)findings.textContent=(status.replay.findings_confirmed||0)+' confirmed / '+(status.replay.findings_provisional||0)+' provisional';
+    var training=document.getElementById('playtestTrainingStatus');
+    if(training&&status.training_status)training.textContent=status.training_status;
   },
 
   stopEvolution: function(){
@@ -754,6 +790,31 @@ var ChatUI = {
       controller.abort();
       ChatUI.updateEvolutionPanel({stage:'cancelling'});
       ChatUI.updateLoading('正在安全停止进化...');
+    }
+  },
+
+  stopPlaytestTraining: function(){
+    var controller=ChatUI.playtestTrainingAbortController;
+    if(controller&&!controller.signal.aborted){
+      controller.abort();
+      ChatUI.updatePlaytestPanel({training_status:'cancelling'});
+    }
+  },
+
+  startPlaytestTraining: async function(options){
+    options=options||{};
+    if(ChatUI.playtestTrainingAbortController)return{status:'failed',reason:'training_in_progress'};
+    ChatUI.playtestTrainingAbortController=new AbortController();
+    ChatUI.showPlaytestPanel();
+    ChatUI.updatePlaytestPanel({training_status:'training'});
+    try{
+      var runtime=ChatUI.createEvolutionRuntime();
+      if(!runtime.trainingCoordinator)return{status:'failed',reason:'training_coordinator_unavailable'};
+      var result=await runtime.trainingCoordinator.trainAfterRunClose(Object.assign({},options,{signal:ChatUI.playtestTrainingAbortController.signal}));
+      ChatUI.updatePlaytestPanel({training_status:result.status||'completed'});
+      return result;
+    }finally{
+      ChatUI.playtestTrainingAbortController=null;
     }
   },
 
@@ -799,6 +860,9 @@ var ChatUI = {
         eng.load(dsl,plugin);
         A.setGameState(A.STATE.RUNNING);
         return dsl;
+      },
+      releaseAllInputs:function(){
+        if(typeof eng.releaseAllInputs==='function')return eng.releaseAllInputs();
       },
       restoreBaseline:function(dsl){
         if(typeof eng.teardown==='function')eng.teardown();
@@ -875,6 +939,7 @@ var ChatUI = {
       finalQA:deterministicQA,
       engine:engineAdapter,
       simulation:new A.SimulationAgent(),
+      playtest:A.PlayTestEvaluator?new A.PlayTestEvaluator({engineAdapter:engineAdapter}):null,
       fitnessFactory:function(options){return new A.FitnessCalculator(options);}
     });
     var runner=new A.EvolutionRunner({
@@ -896,7 +961,17 @@ var ChatUI = {
     });
     var director=new A.GameDirector({evolutionRunner:runner,evolutionPromoter:promoter});
     director._statusCallback=function(message){ChatUI.updateLoading(message);};
-    return{director:director,runner:runner,promoter:promoter,engine:engineAdapter};
+    var trainingCoordinator=A.TrainingCoordinator&&A.TrainingMemory&&A.PolicyStore&&A.PolicyPromoter
+      ?new A.TrainingCoordinator({
+        ledger:new A.RewardLedger(),
+        buffer:new A.ReplayBuffer(),
+        trainer:new A.QLearningTrainer(),
+        trainingMemory:new A.TrainingMemory(localStorage),
+        validationRunner:new A.ValidationRunner(),
+        promoter:new A.PolicyPromoter({store:new A.PolicyStore(localStorage),trainingMemory:new A.TrainingMemory(localStorage)})
+      })
+      :null;
+    return{director:director,runner:runner,promoter:promoter,engine:engineAdapter,trainingCoordinator:trainingCoordinator};
   },
 
   persistEvolutionBaseline: function(baseline,versionId){
@@ -917,6 +992,9 @@ var ChatUI = {
     ChatUI.evolutionAbortController=new AbortController();
     var signal=ChatUI.evolutionAbortController.signal;
     ChatUI.showEvolutionPanel();
+    var playtestToggle=document.getElementById('playtestEnabled');
+    var playtestEnabled=!!(playtestToggle&&playtestToggle.checked);
+    if(playtestEnabled)ChatUI.showPlaytestPanel();
     var baseline=null;
     try{
       baseline=await ChatUI.runDirector(prompt,intent);
@@ -954,6 +1032,8 @@ var ChatUI = {
         blueprint_metadata:metadata,
         fitness_profile:'default_v2',
         deterministic:false,
+        playtest_enabled:playtestEnabled,
+        playtest_options:{policy_id:'bug_hunter'},
         signal:signal
       });
       ChatUI.currentConv.last_evolution={run_id:evolution.run_id,status:evolution.status,stopped_reason:evolution.stopped_reason,promotion:evolution.promotion};

@@ -114,8 +114,19 @@
         <div><span>提升</span><strong id="evolutionImprovement">--</strong></div>
       </div>
       <div class="evolution-actions">
+        <label class="playtest-toggle"><input id="playtestEnabled" type="checkbox"> 启用 Bug Hunter PlayTest</label>
         <button id="btnStopEvolution" class="evolution-stop" type="button">停止进化</button>
       </div>
+    </section>
+    <section id="playtestPanel" class="playtest-panel" style="display:none" aria-live="polite">
+      <div class="playtest-header"><span>Bug Hunter PlayTest</span><span id="playtestStatus">未运行</span></div>
+      <div class="playtest-stats">
+        <div><span>Policy</span><strong id="playtestPolicyVersion">--</strong></div>
+        <div><span>Discovery</span><strong id="playtestDiscoveryProgress">0 / 18</strong></div>
+        <div><span>Replay</span><strong id="playtestReplayProgress">0 / 24</strong></div>
+        <div><span>Findings</span><strong id="playtestFindingSummary">0 confirmed</strong></div>
+      </div>
+      <div class="playtest-actions"><button id="btnStopPlaytestTraining" class="evolution-stop" type="button">停止训练</button><span id="playtestTrainingStatus">未训练</span></div>
     </section>
     <!-- 消息列表动态插入 -->
     <div class="messages" id="messages"></div>
@@ -261,6 +272,29 @@
 <script src="evolution/EvolutionProtocols.js"></script>
 <script src="evolution/EvolutionProfiles.js"></script>
 <script src="evolution/SeededPRNG.js"></script>
+<script src="playtest/PlayTestProtocols.js"></script>
+<script src="playtest/CanonicalStateSerializer.js"></script>
+<script src="playtest/GameTypeStateAdapter.js"></script>
+<script src="playtest/CoreStateEncoder.js"></script>
+<script src="playtest/MacroActionSchema.js"></script>
+<script src="playtest/EpisodeTracker.js"></script>
+<script src="playtest/MacroActionExecutor.js"></script>
+<script src="playtest/ObservationNormalizer.js"></script>
+<script src="playtest/AnomalyRuleRegistry.js"></script>
+<script src="playtest/FindingFingerprintBuilder.js"></script>
+<script src="playtest/ReplayRunner.js"></script>
+<script src="playtest/RewardLedger.js"></script>
+<script src="playtest/ReplayBuffer.js"></script>
+<script src="playtest/QLearningTrainer.js"></script>
+<script src="playtest/PolicyValidator.js"></script>
+<script src="playtest/PolicyStore.js"></script>
+<script src="playtest/TrainingMemory.js"></script>
+<script src="playtest/EngineAdapter.js"></script>
+<script src="playtest/PlayTestEvaluator.js"></script>
+<script src="playtest/PlayTestRunCoordinator.js"></script>
+<script src="playtest/ValidationRunner.js"></script>
+<script src="playtest/TrainingCoordinator.js"></script>
+<script src="playtest/PolicyPromoter.js"></script>
 <script src="evolution/GeneSchemaValidator.js"></script>
 <script src="evolution/OptimizationSchemaBuilder.js"></script>
 <script src="evolution/GeneEncoder.js"></script>
